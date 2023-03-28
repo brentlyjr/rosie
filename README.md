@@ -22,3 +22,4 @@ Make sure to add the required variables to a new `.env` file (not kept in GitHub
 Install PIP (pip3 on Mac)
 
  pip install python-dotenv
+ pip install openai
