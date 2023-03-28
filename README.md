@@ -2,11 +2,18 @@
 
 Our test of using AI
 
-## Test organization
+## Environment Setup
 
-Let's see if this change works - sucka!
+### Package install
 
-Hi, Alan!
+After getting the basic python environment setup, you will need to import a few packages:
+
+pip install python-dotenv
+pip install openai
+
+### Environment variables required
+
+CHATGPT_KEY=(your key)
 
 
 
