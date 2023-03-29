@@ -38,8 +38,8 @@ class AudioRecording:
 
         # Store data in chunks for 3 seconds
         for i in range(0, int(self.fs / self.chunk * self.seconds)):
-            data = stream.read(self.chunk)
-            self.frames.append(self.data)
+            data = stream.read(chunk)
+            self.frames.append(data)
 
     # Stop and close the stream 
     def stop_stream(self)
