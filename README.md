@@ -10,8 +10,10 @@ After getting the basic python environment setup, you will need to import a few 
 
 pip install python-dotenv
 pip install openai
+brew install portaudio
+pip install pyaudio
 
-### Environment variables required
+### Environment setup
 
 Make sure to add the required variables to a new `.env` file (not kept in GitHub public repo for obvious reasons):
 
