@@ -1,16 +1,13 @@
 
-import os
-from dotenv import load_dotenv
-from voice_to_json import voice_to_json
+from audiosnippet import PyAudioSnippet
 
-load_dotenv()  # Load environment variables from .env file
-print("Hello World!")
+my_audio = PyAudioSnippet()
+duration = 5    # in seconds
 
-# Test load our Environment variable and print it out
-api_key = os.environ.get('CHATGPT_KEY')
-print("ChatGPT API KEY: ", api_key)
+print("starting to record")
+my_audio.record_audio(duration)
+print("recording finished")
 
-
-# Call our function that will record 3 secnds of audio from the microphone and return it as a JSON object
-transcript = voice_to_json()
-print(transcript)
+print("Now translating to english")
+text = my_audio.translate_to_text()
+print(text)
