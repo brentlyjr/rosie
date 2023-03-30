@@ -2,12 +2,11 @@ import speechrecognizer as sr
 import pyaudio  # so we can access microphone and record a stream
 import wave     # so we can save to a WAV file
 import os       # so we can access environment variables
-
+import pygame
 
 class AudioSnippet:
     def __init__(self, language="english"):
         self.speech_recognizer = sr.WhisperRecognizer(language)
-        self.filename = None
 
     def play_audio(self, file_path):
         # Add code here to play the audio file
@@ -34,8 +33,10 @@ class AudioSnippet:
 
 
 class PyAudioSnippet(AudioSnippet):
-    def __init__(self, language="english"):
+    def __init__(self, filename = None, language ="english"):
         super().__init__(language)
+
+        self.filename = filename
 
         self.p = pyaudio.PyAudio()
         self.sample_format = pyaudio.paInt16  # 16 bits per sample
@@ -44,15 +45,23 @@ class PyAudioSnippet(AudioSnippet):
         self.channels = 1    # Only one channel seems to work on our laptops
         self.fs = 44100      # Record at 44100 samples per second
     
-        self.frames = []     # Initialize array to store frames
-    
-    def play_audio(self, file_path):
+        # Initialize the sound player
+        pygame.init()
+        pygame.mixer.init()
+
+    def play_audio(self):
         # Add code here to play the audio file
-        pass
+        sound = pygame.mixer.Sound(self.filename)
+        sound.play()
+
+        while pygame.mixer.get_busy():
+            pygame.time.Clock().tick(10)
 
     def record_audio(self, duration = 3):
         super().record_audio(duration)
         self.duration_in_seconds = duration
+        self.frames = []     # Initialize array to store frames
+
 
         # Record data in chunks
         stream = self.p.open(format=self.sample_format,
@@ -69,7 +78,7 @@ class PyAudioSnippet(AudioSnippet):
         stream.stop_stream()
         stream.close()
 
-        self.p.terminate()
+        #self.p.terminate()     #Not sure where to close the resource
 
         self.save_audio_to_file()
 
@@ -87,4 +96,6 @@ class PyAudioSnippet(AudioSnippet):
         text = self.speech_recognizer.translate_to_text(self.filename)
         return text
 
+    def add_audio(self, file):
+        self.filename = file
       

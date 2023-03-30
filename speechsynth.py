@@ -40,7 +40,7 @@ class RapidAPISynth(SpeechSynth):
 
         # POST request
         response = requests.request("POST", url, data=json.dumps(payload), headers=headers)
-        print(response.text)
+        #print(response.text)
 
         # get id and eta of the job from the response
         id = json.loads(response.text)['id']

@@ -24,4 +24,4 @@ class WhisperRecognizer(SpeechRecognizer):
         openai.api_key = self.api_key
         with open(filename, "rb") as audio_file:
             transcript = openai.Audio.transcribe("whisper-1", audio_file)
-        return transcript
+        return transcript.text

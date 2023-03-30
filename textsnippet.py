@@ -1,9 +1,9 @@
-#import speechsynthesizer as synth
+from speechsynth import RapidAPISynth
 
 
 class TextSnippet:
     def __init__(self, text= "",language="english"):
-        self.speech_synth = synth.SpeechSynth(language)
+        self.speech_synth = RapidAPISynth(language)
         self.text = text
         self.language = language
 
@@ -20,4 +20,4 @@ class TextSnippet:
 
     def translate_to_speech(self):
         # Add code here to translate the audio_data to text using the SpeechRecognizer
-        return self.speech_synth(self.text)
+        return self.speech_synth.translate_to_speech(self.text)
