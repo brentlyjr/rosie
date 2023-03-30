@@ -73,7 +73,7 @@ class PyAudioSnippet(AudioSnippet):
 
         self.save_audio_to_file()
 
-    def save_audio_to_file(self, filename="temp-audio.wav"):
+    def save_audio_to_file(self, filename="temp/temp-audio.wav"):
             self.filename = filename
 
             wf = wave.open(filename, 'wb')
