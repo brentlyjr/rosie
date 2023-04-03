@@ -12,6 +12,7 @@ pip install python-dotenv
 pip install openai
 brew install portaudio
 pip install pyaudio
+pip install pygame
 
 ### Environment setup
 
