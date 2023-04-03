@@ -19,7 +19,3 @@ pip install pygame
 Make sure to add the required variables to a new `.env` file (not kept in GitHub public repo for obvious reasons):
 
 - CHATGPT_KEY=(your key)
-
-### Known branches of development
-
-brent-playground
