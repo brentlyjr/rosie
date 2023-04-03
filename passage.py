@@ -1,9 +1,9 @@
-from audiosnippet import PyAudioSnippet
+from audiosnippet import SDAudioSnippet
 from textsnippet import TextSnippet
 
 class Passage:
     def __init__(self, filename=None, text="", language="english"):
-        self.audiosnippet = PyAudioSnippet(filename = None, language =language)
+        self.audiosnippet = SDAudioSnippet(filename = None, language =language)
         self.textsnippet = TextSnippet(text, language)
         self.language = language
 

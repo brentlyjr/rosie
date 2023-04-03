@@ -1,8 +1,9 @@
 import speechrecognizer as sr
-import pyaudio  # so we can access microphone and record a stream
-import wave     # so we can save to a WAV file
 import os       # so we can access environment variables
-import pygame
+import sounddevice as sd
+import numpy
+import time
+from scipy.io.wavfile import read, write
 
 class AudioSnippet:
     def __init__(self, language="english"):
@@ -29,68 +30,35 @@ class AudioSnippet:
             return self.filename
         else:
             return "Error: Filename not found"
-            
+                  
 
-
-class PyAudioSnippet(AudioSnippet):
+class SDAudioSnippet(AudioSnippet):
     def __init__(self, filename = None, language ="english"):
         super().__init__(language)
 
         self.filename = filename
 
-        self.p = pyaudio.PyAudio()
-        self.sample_format = pyaudio.paInt16  # 16 bits per sample
+        self.fs = 44100
 
-        self.chunk = 1024  # Record in chunks of 1024 samples
-        self.channels = 1    # Only one channel seems to work on our laptops
-        self.fs = 44100      # Record at 44100 samples per second
-    
-        # Initialize the sound player
-        pygame.init()
-        pygame.mixer.init()
 
     def play_audio(self):
         # Add code here to play the audio file
-        sound = pygame.mixer.Sound(self.filename)
-        sound.play()
-
-        while pygame.mixer.get_busy():
-            pygame.time.Clock().tick(10)
+        device_index = self.get_device(sd.query_devices(), 'speaker')
+        sd.play(self.myrecording, self.fs, device=device_index)
 
     def record_audio(self, duration = 3):
         super().record_audio(duration)
         self.duration_in_seconds = duration
-        self.frames = []     # Initialize array to store frames
 
-
-        # Record data in chunks
-        stream = self.p.open(format=self.sample_format,
-                        channels=self.channels,
-                        rate=self.fs,
-                        frames_per_buffer=self.chunk,
-                        input=True)
-
-        # Store data in chunks for 3 seconds
-        for i in range(0, int(self.fs / self.chunk * self.duration_in_seconds)):
-            data = stream.read(self.chunk)
-            self.frames.append(data)
-
-        stream.stop_stream()
-        stream.close()
-
-        #self.p.terminate()     #Not sure where to close the resource
-
+        device_index = self.get_device(sd.query_devices(), 'microphone')
+        self.myrecording = sd.rec(int(duration*self.fs), samplerate=self.fs, channels=1, device =device_index)
+        self.countdown(duration)
         self.save_audio_to_file()
 
     def save_audio_to_file(self, filename="temp/temp-audio.wav"):
             self.filename = filename
 
-            wf = wave.open(filename, 'wb')
-            wf.setnchannels(self.channels)
-            wf.setsampwidth(self.p.get_sample_size(self.sample_format))
-            wf.setframerate(self.fs)
-            wf.writeframes(b''.join(self.frames))
-            wf.close()
+            write(filename, self.fs, self.myrecording)
 
     def translate_to_text(self):
         text = self.speech_recognizer.translate_to_text(self.filename)
@@ -98,4 +66,20 @@ class PyAudioSnippet(AudioSnippet):
 
     def add_audio(self, file):
         self.filename = file
-      
+        self.fs, self.myrecording = read(file)
+    
+    def get_device(self, sound_devices, search_string):
+        search_string = search_string.lower()
+        for i, device in enumerate(sound_devices):
+            if search_string in device['name'].lower():
+                return i
+        return None
+    
+    def get_audio(self):
+        return self.myrecording
+    
+    def countdown(self, seconds):
+        for i in range(seconds, 0, -1):
+            print(f"Recording for {i} seconds", end='\r')
+            time.sleep(1)
+        print("Recording finished.             ")
