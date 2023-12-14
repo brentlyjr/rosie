@@ -10,6 +10,8 @@ from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
 from jinja2 import Template
 from dotenv import load_dotenv
+import requests
+
 
 # Get our Azure credentials
 load_dotenv()
@@ -93,20 +95,43 @@ async def on_message(websocket, message):
         print("Call Has Ended")
         speech_recognizer.stop_continuous_recognition()
 
+def get_ngrok_url():
+    # Query ngrok API to get the tunnel information
+    try:
+        ngrok_tunnels = requests.get("http://127.0.0.1:4040/api/tunnels").json()
+
+        for tunnel in ngrok_tunnels.get("tunnels", []):
+            if tunnel.get("config", {}).get("addr") == "http://localhost:8080":
+                # Return the public URL of the tunnel
+                return tunnel.get("public_url")
+    except requests.ConnectionError:
+        print("Could not connect to ngrok API")
+        return None
+    
 
 @app.post("/")
 async def post(request: Request):
     host = request.client.host
     print("Post call - host=" + host)
-    xml = Template("""
-    <Response>
-        <Start>
-            <Stream url="wss://4038-73-70-107-57.ngrok-free.app/ws"/>
-        </Start>
-        <Say>Go time</Say>
-        <Pause length="60" />
-    </Response>
-    """).render(host=host)
+    current_ngrok_url = get_ngrok_url()
+    if current_ngrok_url:
+        ws_url = current_ngrok_url.replace("http", "ws")
+        xml = Template("""
+        <Response>
+            <Start>
+                <Stream url="{{ ws_url }}/ws"/>
+            </Start>
+            <Say>Go time</Say>
+            <Pause length="60" />
+        </Response>
+        """).render(ws_url=ws_url)
+    else:
+        # Fallback XML or error handling if ngrok URL is not available
+        xml = """
+        <Response>
+            <Say>Error: ngrok URL not found</Say>
+        </Response>
+        """
     return Response(content=xml, media_type="text/xml")
 
 if __name__ == "__main__":
