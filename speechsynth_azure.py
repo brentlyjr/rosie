@@ -10,6 +10,8 @@ class SpeechSynthAzure:
         self.speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Raw8Khz8BitMonoMULaw)
         self.synth_file_name = "synth_text.bin"
 
+        self.speech_config.speech_synthesis_voice_name="en-US-EmmaNeural"
+
         # Let's allow swearing to come through
         self.speech_config.set_profanity(speechsdk.ProfanityOption.Raw)
 

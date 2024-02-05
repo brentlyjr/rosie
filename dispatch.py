@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, Response
 import azure.cognitiveservices.speech as speechsdk
 from twilio.twiml.voice_response import VoiceResponse, Connect
 
-from rosie_utils import load_environment_variables
+from rosie_utils import load_environment_variables, Profiler
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 
@@ -25,6 +25,7 @@ app = FastAPI()
 wsserver = []
 streamId = 0
 
+profiler = Profiler()
 start_time = time.time()
 speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION)
 
@@ -35,14 +36,12 @@ time_to_respond = False
 
 my_assistant = VoiceAssistant("gpt4")
 assistant_text = None
-
+start_recognition = False
 
 def print_time_tracking(start_time, function_name):
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"TIMING: {function_name}  Execution time: {elapsed_time} seconds")
-
-print_time_tracking(start_time, "Startup")
 
 def remove_ending_period(s):
     # Check if the string ends with the word 'period'
@@ -52,75 +51,88 @@ def remove_ending_period(s):
     return s
 
 def recognizing_cb(evt):
-    global start_time
-    print("RECOGNIZING: " + evt.result.text)
+    global profiler
+    global start_recognition
+
+    print("LISTENING: " + evt.result.text)
+    if not start_recognition:
+        profiler.update("Listening")
+        start_recognition = True
 
 
 def recognized_cb(evt):
-    global time_to_respond
+    global profiler
+    global start_recognition
     global my_assistant
     global assistant_text
-    global start_time
-
-    start_time = start_time = time.time()
+    global time_to_respond 
+   
+    profiler.update("Recognized")
+    start_recognition = False
     txt = evt.result.text
     if not txt:
         print("RECOGNIZED: None ---- ENDING")
         return
     
     print("RECOGNIZED: " + txt)
-    
+    profiler.print("Recognized")
     # My edits - start translating as soon as there is a pause
 
-    my_assistant.next_user_response(txt)
-    print_time_tracking(start_time, "Next_user:")
-    
+    my_assistant.next_user_response(txt)   
     my_assistant.print_thread()
     print("-----------------------------------")
-    start_time = start_time = time.time()
-    assistant_text = my_assistant.next_assistant_response()
-    print_time_tracking(start_time, "Next_Assistant")
- 
-    print("RESPONSE:", assistant_text)
-    my_assistant.print_thread()
+    profiler.update("ChatGPT-Full")
+    profiler.update("ChatGPT-chunk")
+    my_assistant.next_assistant_response()
+    profiler.print("Next_Assistant")
     print("-----------------------------------")
     time_to_respond = True
     
 
 # This function gets called when we are trying to send some media data inbound on the phone call
-# This is trigged by the word "done" in the audio of the message
+#
 async def send_response(websocket: WebSocket):
     global time_to_respond
     global assistant_text
     global speech_synth
+    global my_assistant
+    global profiler
 
-
-    #print("Responding to Twilio")
+    print("Responding to Twilio")
     time_to_respond = False
-
+    full_start_time = time.time()
     seq = 1
 
-    if not assistant_text: 
-        print("Not assistant_text")
-        return
+    #if not assistant_text: 
+    #    print("Not assistant_text")
+    #    return
     try:
-        synth_text = assistant_text
-        #print("Txt to convert to speech", assistant_text)
-        start_time = start_time = time.time()
-        encoded_data = speech_synth.generate_speech(synth_text)
-        print_time_tracking(start_time, "generate speech")
+        for synth_text in my_assistant.next_chunk():
+            profiler.print("Chat chunk")
+            profiler.update("ChatGPT-chunk")
+            print("Txt to convert to speech: ", synth_text)
+            #start_time = time.time()
+            profiler.update("SpeechSynth")
+            encoded_data = speech_synth.generate_speech(synth_text)
+            profiler.print("Generate speech")
+            #print_time_tracking(start_time, "generate speech")
 
-        # seq = seq + 1;
-        # Send the encoded data over the WebSocket stream
-        start_time = start_time = time.time()
-        #print("Sending Media Message: ")
-        await websocket.send_json(media_data(encoded_data, streamId, seq))
-        markdata = mark_data(streamId)
-        #print("Sending Mark Message: ", markdata)
-        await websocket.send_json(markdata)
-        print_time_tracking(start_time, "Streaming AI Voice")
-        speech_synth.cleanup()
-        
+            # seq = seq + 1;
+            # Send the encoded data over the WebSocket stream
+            #print("Sending Media Message: ")
+            await websocket.send_json(media_data(encoded_data, streamId, seq))
+            markdata = mark_data(streamId)
+            #print("Sending Mark Message: ", markdata)
+            await websocket.send_json(markdata)
+            #print_time_tracking(start_time, "Streaming AI Voice")
+            profiler.print("Streaming AI Voice")
+            speech_synth.cleanup()
+            #time.sleep(3)
+        #print_time_tracking(full_start_time, "Total speech synth time")     
+        profiler.print("ChatGPT Done")
+        if my_assistant.conversation_ended():
+            my_assistant.summarize_conversation()
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -173,6 +185,7 @@ async def on_message(websocket, message):
     global streamId
     global my_assistant
     global speech_synth
+    global time_to_respond
 
     msg = json.loads(message)
     event = msg.get("event")
