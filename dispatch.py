@@ -13,12 +13,15 @@ from fastapi.responses import HTMLResponse, Response
 import azure.cognitiveservices.speech as speechsdk
 from twilio.twiml.voice_response import VoiceResponse, Connect
 
-from rosie_utils import load_environment_variables
+from rosie_utils import load_environment_variable
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 
 # Load all the required environment variables with proper error checking
-SPEECH_KEY, SPEECH_REGION, SERVICE_PORT, WEBSOCKET_STREAM_URL = load_environment_variables()
+SPEECH_KEY = load_environment_variable("SPEECH_KEY")
+SPEECH_REGION = load_environment_variable("SPEECH_REGION")
+SERVICE_PORT = load_environment_variable("SERVICE_PORT")
+WEBSOCKET_STREAM_URL = load_environment_variable("WEBSOCKET_STREAM_URL")
 
 # Some critical global variables
 app = FastAPI()
