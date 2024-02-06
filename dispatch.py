@@ -1,6 +1,4 @@
-# Program to accept a phone call via Twilio and transcribe the audio. When the program detects the word "done",
-# it tries to send up the contents of a binary file called "output.bin" on the websocket so you can hear it on the call.
-# Need to have ngrok, FastAPI and Twilio all setup properly
+# Main dispatch controller for our Rosie Voice Assistance
 
 import os
 import re
@@ -11,7 +9,7 @@ from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
 import azure.cognitiveservices.speech as speechsdk
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_environment_variable, Profiler
+from rosie_utils import load_environment_variable, Profiler, get_ngrok_url
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 
@@ -19,7 +17,6 @@ from speechsynth_azure import SpeechSynthAzure
 SPEECH_KEY = load_environment_variable("SPEECH_KEY")
 SPEECH_REGION = load_environment_variable("SPEECH_REGION")
 SERVICE_PORT = load_environment_variable("SERVICE_PORT")
-WEBSOCKET_STREAM_URL = load_environment_variable("WEBSOCKET_STREAM_URL")
 
 # Some critical global variables
 app = FastAPI()
@@ -219,13 +216,14 @@ async def on_message(websocket, message):
 async def post(request: Request):
     host = request.client.host
     print("Post call - host=" + host)
+    ws_url = get_ngrok_url()
 
     response = VoiceResponse()
     response.say('Please respond as a restaurant receptionist receiving an inbound phone call.')
     connect = Connect()
     connect.stream(
         name='Outbound',
-        url = WEBSOCKET_STREAM_URL
+        url = ws_url
     )
     response.append(connect)
     response.pause(length=15)
@@ -235,4 +233,4 @@ async def post(request: Request):
 if __name__ == "__main__":
     print("Listening at Port ", SERVICE_PORT)
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=SERVICE_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=int(SERVICE_PORT))
