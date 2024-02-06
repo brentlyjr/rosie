@@ -20,7 +20,6 @@ SERVICE_PORT = load_environment_variable("SERVICE_PORT")
 
 # Some critical global variables
 app = FastAPI()
-wsserver = []
 streamId = 0
 
 profiler = Profiler()
@@ -99,33 +98,22 @@ async def send_response(websocket: WebSocket):
     print("Responding to Twilio")
     time_to_respond = False
     full_start_time = time.time()
-    seq = 1
 
-    #if not assistant_text: 
-    #    print("Not assistant_text")
-    #    return
     try:
         for synth_text in my_assistant.next_chunk():
             profiler.print("Chat chunk")
             profiler.update("ChatGPT-chunk")
             print("Txt to convert to speech: ", synth_text)
-            #start_time = time.time()
             profiler.update("SpeechSynth")
             encoded_data = speech_synth.generate_speech(synth_text)
             profiler.print("Generate speech")
-            #print_time_tracking(start_time, "generate speech")
 
-            # seq = seq + 1;
             # Send the encoded data over the WebSocket stream
             #print("Sending Media Message: ")
-            await websocket.send_json(media_data(encoded_data, streamId, seq))
-            markdata = mark_data(streamId)
-            #print("Sending Mark Message: ", markdata)
-            await websocket.send_json(markdata)
-            #print_time_tracking(start_time, "Streaming AI Voice")
+            await websocket.send_json(media_data(encoded_data, streamId))
             profiler.print("Streaming AI Voice")
             speech_synth.cleanup()
-            #time.sleep(3)
+
         #print_time_tracking(full_start_time, "Total speech synth time")     
         profiler.print("ChatGPT Done")
         if my_assistant.conversation_ended():
@@ -142,29 +130,18 @@ speech_recognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}
 speech_recognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
 speech_recognizer.canceled.connect(lambda evt: print('CANCELED {}'.format(evt)))
 
-def media_data(encoded_data, streamId, seq):
+def media_data(encoded_data, streamId):
     return {
             "event": "media",
             "streamSid": streamId,
-        #    "sequenceNumber": seq,     # Including a sequence in it throws back a Warning 31951 error
             "media": {
                 "payload": encoded_data
             }
     }
 
-def mark_data(streamId):
-    return { 
-                "event": "mark",
-                "streamSid": streamId,
-                "mark": {
-                    "name": "inbound"
-                }
-            }
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    wsserver.append(websocket)
     try:
         while True:
             message = await websocket.receive_text()
@@ -174,9 +151,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect as e:
         print(f"WebSocket disconnected: {e}")
-
-    finally:
-        wsserver.remove(websocket)
 
 
 async def on_message(websocket, message):
