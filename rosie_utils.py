@@ -1,6 +1,8 @@
 import os
+import sys
 import time
 import requests
+import json
 
 
 def load_environment_variable(str):
@@ -33,6 +35,32 @@ def get_ngrok_url():
     except requests.ConnectionError:
         print("Could not connect to ngrok API")
         return None
+
+
+class OutboundCall:
+    def __init__(self):
+        # Initialize class variables
+        self.call_out = False
+        self.to_number = None
+        self.from_number = None
+        
+        # Load configuration from JSON file
+        self.load_config()
+
+    # See if we have a "callout.json" file to designate if and where we make an outbound call to
+    def load_config(self):
+        try:
+            # Load JSON data from file
+            with open("callout.json", "r") as file:
+                data = json.load(file)
+                # Extract variables from JSON data
+                self.call_out = data.get("CALL_OUT")
+                self.to_number = data.get("TO_NUMBER")
+                self.from_number = data.get("FROM_NUMBER")
+        except FileNotFoundError:
+            print("Error: File 'callout.json' not found.")
+        except json.JSONDecodeError:
+            print("Error: Failed to decode JSON from 'callout.json'.")
 
 
 class Profiler:

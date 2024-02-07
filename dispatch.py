@@ -5,23 +5,30 @@ import re
 import json
 import base64
 import time
+import uvicorn
+import threading
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
 import azure.cognitiveservices.speech as speechsdk
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_environment_variable, Profiler, get_ngrok_url
+from rosie_utils import load_environment_variable, Profiler, get_ngrok_url, OutboundCall
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
+from twilio.rest import Client
 
 # Load all the required environment variables with proper error checking
-SPEECH_KEY = load_environment_variable("SPEECH_KEY")
-SPEECH_REGION = load_environment_variable("SPEECH_REGION")
+SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
+SPEECH_REGION = load_environment_variable("AZURE_SPEECH_REGION")
 SERVICE_PORT = load_environment_variable("SERVICE_PORT")
+TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
 
 # Some critical global variables
 app = FastAPI()
 streamId = 0
 
+# Determine if Rosie should call out to a preferred number
+config = OutboundCall()
 profiler = Profiler()
 speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION)
 
@@ -168,7 +175,6 @@ async def on_message(websocket, message):
         my_assistant = VoiceAssistant('gpt-4')
 
 
-
 @app.post("/")
 async def post(request: Request):
     host = request.client.host
@@ -176,7 +182,9 @@ async def post(request: Request):
     ws_url = get_ngrok_url()
 
     response = VoiceResponse()
-    response.say('Please respond as a restaurant receptionist receiving an inbound phone call.')
+    # If we are calling out, don't provide this message as it doesn't make sense
+    if config.call_out == False:
+        response.say('Please respond as a restaurant receptionist receiving an inbound phone call.')
     connect = Connect()
     connect.stream(
         name='Outbound',
@@ -187,7 +195,32 @@ async def post(request: Request):
     return Response(content=response.to_xml(), media_type="text/xml")
 
 
-if __name__ == "__main__":
+# Function to instantiate our web server
+def run_fastapi():
     print("Listening at Port ", SERVICE_PORT)
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(SERVICE_PORT))
+
+
+# This check just ensures we are executing from a command line and not as a library file
+if __name__ == "__main__":
+    # Create a thread for FastAPI
+    fastapi_thread = threading.Thread(target=run_fastapi)
+
+    # Start the FastAPI thread in the background
+    fastapi_thread.start()
+
+    if config.call_out:
+        print("Starting our outbound call")
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+        call = client.calls.create(
+                            method='POST',
+                            status_callback='https://a910-73-70-107-57.ngrok-free.app',
+                            status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
+                            status_callback_method='POST',
+                            url='https://a910-73-70-107-57.ngrok-free.app',
+                            to=config.to_number,
+                            from_=config.from_number
+                        )
+
+        print(call.sid)
