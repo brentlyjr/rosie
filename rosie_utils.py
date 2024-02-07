@@ -13,7 +13,18 @@ def load_environment_variable(str):
     return envVar
 
 
-def get_ngrok_url():
+def get_ngrok_ws_url():
+    # Query ngrok API to get the tunnel information
+    http_url = get_ngrok_http_url()
+
+    # Switch the http protocol for a websocket and append our local path
+    ws_url = http_url.replace("https", "wss")
+    ws_url = ws_url + "/ws"
+    print("Websocket URL =", ws_url)
+    return ws_url
+
+
+def get_ngrok_http_url():
     # Query ngrok API to get the tunnel information
     try:
         ngrok_tunnels = requests.get("http://127.0.0.1:4040/api/tunnels").json()
@@ -27,10 +38,7 @@ def get_ngrok_url():
                 http_url = tunnel.get("public_url")
 
         # Switch the http protocol for a websocket and append our local path
-        ws_url = http_url.replace("https", "wss")
-        ws_url = ws_url + "/ws"
-        print("Websocket URL =", ws_url)
-        return ws_url
+        return http_url
 
     except requests.ConnectionError:
         print("Could not connect to ngrok API")

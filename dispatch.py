@@ -11,7 +11,7 @@ from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
 import azure.cognitiveservices.speech as speechsdk
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_environment_variable, Profiler, get_ngrok_url, OutboundCall
+from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, get_ngrok_http_url, OutboundCall
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 from twilio.rest import Client
@@ -179,7 +179,7 @@ async def on_message(websocket, message):
 async def post(request: Request):
     host = request.client.host
     print("Post call - host=" + host)
-    ws_url = get_ngrok_url()
+    ws_url = get_ngrok_ws_url()
 
     response = VoiceResponse()
     # If we are calling out, don't provide this message as it doesn't make sense
@@ -215,10 +215,10 @@ if __name__ == "__main__":
 
         call = client.calls.create(
                             method='POST',
-                            status_callback='https://a910-73-70-107-57.ngrok-free.app',
+                            status_callback=get_ngrok_http_url(),
                             status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
                             status_callback_method='POST',
-                            url='https://a910-73-70-107-57.ngrok-free.app',
+                            url=get_ngrok_http_url(),
                             to=config.to_number,
                             from_=config.from_number
                         )
