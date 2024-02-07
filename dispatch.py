@@ -23,7 +23,6 @@ app = FastAPI()
 streamId = 0
 
 profiler = Profiler()
-start_time = time.time()
 speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION)
 
 # instantiate the speech recognizer with push stream input
@@ -32,20 +31,8 @@ speech_recognizer = speech_synth.speech_recognizer()
 time_to_respond = False
 
 my_assistant = VoiceAssistant("gpt4")
-assistant_text = None
 start_recognition = False
 
-def print_time_tracking(start_time, function_name):
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"TIMING: {function_name}  Execution time: {elapsed_time} seconds")
-
-def remove_ending_period(s):
-    # Check if the string ends with the word 'period'
-    if s.endswith('period'):
-        # Remove the last 6 characters ('period' and a space)
-        return s[:-7]
-    return s
 
 def recognizing_cb(evt):
     global profiler
@@ -61,7 +48,6 @@ def recognized_cb(evt):
     global profiler
     global start_recognition
     global my_assistant
-    global assistant_text
     global time_to_respond 
    
     profiler.update("Recognized")
@@ -73,6 +59,7 @@ def recognized_cb(evt):
     
     print("RECOGNIZED: " + txt)
     profiler.print("Recognized")
+
     # My edits - start translating as soon as there is a pause
 
     my_assistant.next_user_response(txt)   
@@ -87,17 +74,15 @@ def recognized_cb(evt):
     
 
 # This function gets called when we are trying to send some media data inbound on the phone call
-#
+
 async def send_response(websocket: WebSocket):
     global time_to_respond
-    global assistant_text
     global speech_synth
     global my_assistant
     global profiler
 
     print("Responding to Twilio")
     time_to_respond = False
-    full_start_time = time.time()
 
     try:
         for synth_text in my_assistant.next_chunk():
@@ -114,7 +99,6 @@ async def send_response(websocket: WebSocket):
             profiler.print("Streaming AI Voice")
             speech_synth.cleanup()
 
-        #print_time_tracking(full_start_time, "Total speech synth time")     
         profiler.print("ChatGPT Done")
         if my_assistant.conversation_ended():
             my_assistant.summarize_conversation()
@@ -157,7 +141,6 @@ async def on_message(websocket, message):
     global streamId
     global my_assistant
     global speech_synth
-    global time_to_respond
 
     msg = json.loads(message)
     event = msg.get("event")
