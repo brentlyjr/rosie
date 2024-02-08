@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Input Form</title>
+    <style>
+        body {
+            background-color: lightblue;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            margin: 0 auto;
+            max-width: 600px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .response {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Rosie Text</h2>
+        <form id="textInputForm">
+            <label for="apiEndpoint">API Endpoint:</label><br>
+            <input type="text" id="apiEndpoint" name="apiEndpoint" value="{{ data.server_url }}" style="width: 100%;"><br><br>
+            <label for="textInput">Enter Text:</label><br>
+            <textarea id="textInput" name="textInput" rows="5" style="width: 100%; resize: vertical;"></textarea><br><br>
+            <button type="submit">Submit</button>
+        </form>
+        <div class="response">
+            <h3>Server Response:</h3>
+            <div id="serverResponse"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("textInputForm").addEventListener("submit", function(event) {
+            event.preventDefault(); // Prevent the default form submission
+            
+            // Get the API endpoint and text input value
+            var apiEndpoint = document.getElementById("apiEndpoint").value;
+            var textInput = document.getElementById("textInput").value;
+
+            // Make a POST request to the specified API endpoint
+            fetch(apiEndpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    text: textInput
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Network response was not ok");
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Response from server:", data);
+                // Display the response from server
+                document.getElementById("serverResponse").innerText = JSON.stringify(data);
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                // Display error message
+                document.getElementById("serverResponse").innerText = "Error: " + error.message;
+            });
+        });
+    </script>
+</body>
+</html>

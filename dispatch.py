@@ -15,6 +15,9 @@ from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, g
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 from twilio.rest import Client
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
+
 
 # Load all the required environment variables with proper error checking
 SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
@@ -25,7 +28,19 @@ TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
 
 # Some critical global variables
 app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 streamId = 0
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow requests from all origins (replace with specific origins if needed)
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Allow specific HTTP methods
+    allow_headers=["*"],  # Allow all headers (replace with specific headers if needed)
+    allow_credentials=True,  # Allow credentials (cookies, authorization headers)
+    expose_headers=["Content-Length", "X-Total-Count"],  # Expose additional headers
+    max_age=600,  # Cache preflight response for 10 minutes
+)
+
 
 # Determine if Rosie should call out to a preferred number
 config = OutboundCall()
@@ -130,20 +145,6 @@ def media_data(encoded_data, streamId):
             }
     }
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        while True:
-            message = await websocket.receive_text()
-            await on_message(websocket, message)
-            if time_to_respond:
-                await send_response(websocket)
-
-    except WebSocketDisconnect as e:
-        print(f"WebSocket disconnected: {e}")
-
-
 async def on_message(websocket, message):
     global streamId
     global my_assistant
@@ -175,6 +176,27 @@ async def on_message(websocket, message):
         my_assistant = VoiceAssistant('gpt-4')
 
 
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive_text()
+            await on_message(websocket, message)
+            if time_to_respond:
+                await send_response(websocket)
+
+    except WebSocketDisconnect as e:
+        print(f"WebSocket disconnected: {e}")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def get(request: Request):
+    server_url = get_ngrok_http_url()
+    data = {"server_url": server_url}
+    return templates.TemplateResponse("rosie.html", {"request": request, "data": data})
+
+
 @app.post("/")
 async def post(request: Request):
     host = request.client.host
@@ -193,6 +215,12 @@ async def post(request: Request):
     response.append(connect)
     response.pause(length=15)
     return Response(content=response.to_xml(), media_type="text/xml")
+
+
+@app.post("/api")
+async def get_api(request: Request):
+    print("in api call")
+    return {"message": "Results received successfully"}  # Placeholder response, replace as needed
 
 
 # Function to instantiate our web server
