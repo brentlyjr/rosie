@@ -28,6 +28,10 @@
 <body>
     <div class="container">
         <h2>Rosie Text</h2>
+        <p>Below are three example API calls:</p>
+        <p>1. POST /api/makecall - Initiates an outbound call.</p>
+        <p>2. POST /api/getstatus - Gets current status of call.</p>
+        <p>3. POST /api/listen - Allows you to listen in on existing call.</p>
         <form id="textInputForm">
             <label for="apiEndpoint">API Endpoint:</label><br>
             <input type="text" id="apiEndpoint" name="apiEndpoint" value="{{ data.server_url }}" style="width: 100%;"><br><br>
@@ -55,9 +59,7 @@
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({
-                    text: textInput
-                })
+                body: JSON.stringify(textInput)
             })
             .then(response => {
                 if (!response.ok) {
