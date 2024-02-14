@@ -34,7 +34,7 @@
         <p>3. POST /api/listen - Allows you to listen in on existing call.</p>
         <form id="textInputForm">
             <label for="apiEndpoint">API Endpoint:</label><br>
-            <input type="text" id="apiEndpoint" name="apiEndpoint" value="{{ data.server_url }}" style="width: 100%;"><br><br>
+            <input type="text" id="apiEndpoint" name="apiEndpoint" value="{{ data.server_url }}/api/makecall" style="width: 100%;"><br><br>
             <label for="textInput">Enter Text:</label><br>
             <textarea id="textInput" name="textInput" rows="5" style="width: 100%; resize: vertical;"></textarea><br><br>
             <button type="submit">Submit</button>
