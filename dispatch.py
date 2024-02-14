@@ -70,6 +70,7 @@ def recognized_cb(evt):
     my_assistant.next_assistant_response()
     profiler.print("Next_Assistant")
     print("-----------------------------------")
+    #speech_synth.save_user_audio()
     time_to_respond = True
     
 
@@ -165,6 +166,7 @@ async def on_message(websocket, message):
     elif event == "stop":
         print("Call Has Ended")
         speech_recognizer.stop_continuous_recognition()
+        speech_synth.stop_recording()
         my_assistant = VoiceAssistant('gpt-4')
 
 
