@@ -106,6 +106,8 @@ class ContinuousStereoWriter:
 
     def add_data(self, data, channel='left'):
         # added to convert mulaw to wav
+        # Currently channel left is generated speech and right is human audio
+
         data = audioop.ulaw2lin(data, 2)
 
         # Convert raw bytes to numpy array
