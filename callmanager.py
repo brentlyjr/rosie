@@ -55,13 +55,13 @@ class OutboundCall:
 
         twilioUrl = get_ngrok_http_url()
         call = client.calls.create(
-                            method='GET',
-                            status_callback=twilioUrl+'/api/callstatus',
-                            status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
-                            status_callback_method='GET',
+                            method='POST',
                             url=twilioUrl+'/api/callback',
                             to=self.to_number,
-                            from_=self.from_number
+                            from_=self.from_number,
+                            status_callback=twilioUrl+'/api/callstatus',
+                            status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
+                            status_callback_method='POST'
                         )
         self.call_sid = call.sid
         print("Call SID: ",call.sid)

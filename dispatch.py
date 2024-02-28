@@ -44,18 +44,7 @@ app.add_middleware(
 )
 
 
-# NOTES - every time we enter a dispatch handler, we need to look up which call we are managing. Then we can pass the details
-# of that call into the respective handlers.
-# These call backs are generic and can operate on all calls consecutively
-# In the case of an outbound call, we will instantiate the call directly from Twilio, create a Outbound Call object and
-# store it in our call manager. In the case of a inbound call, we will extract the call details, create an Outbound call
-# and store the details.
-# Maybe no outbound call objecxt, but just a Call Object, that is either "user initiated" or "rosie initaited".
-# Also need to look into the callback mechansims from the "outbound call" and whether those are congruent with our existing
-# call backs. May need to capture different details, or have them setup separately.
-# Test without all of the voice recognition stuff first to get the details of the messages
-# Then determine whether we can have the same ones or different. The outbound call definitely has differnet messages.
-# Make a variable for GPT-4 and downgrade when testing to save money!
+# TODO: Make a variable for GPT-4 and downgrade when testing to save money!
 
 
 def recognizing_cb(evt, call_sid):
@@ -229,15 +218,15 @@ async def toplevel(request: Request):
     return templates.TemplateResponse("rosie.html", {"request": request, "data": data})
 
 
-@app.get("/api/callback")
+@app.post("/api/callback")
 async def callback(request: Request):
     print("Twilio Main Callback - host=" + request.client.host)
 
-    query_params = request.query_params
-    call_sid = query_params.get('CallSid', None)
-    to_number = query_params.get('To', None)
-    from_number = query_params.get('From', None)
-    status = query_params.get('CallStatus', None)
+    # Get our key variables from the callback. basically SID, and other details about the call
+    form = await request.form()
+    call_sid = form.get('CallSid', None)
+    to_number = form.get('To', None)
+    from_number = form.get('From', None)
 
     # We will assume this is a call until we lookup the SID and find out if it already exists
     inbound_call = False
@@ -272,29 +261,17 @@ async def callback(request: Request):
     return Response(content=response.to_xml(), media_type="text/xml")
 
 
-# This callback is currently not working. We would prefer to use a POST versus a GET to
-# be more standard compliant with http protocol, but until we can extra the variables from
-# the POST body, we will have to stick to a GET method for our callbacks.
-@app.post("/api/callstatus")
-async def callstatus_post(request: Request):
-    # Get our form data
-    form = await request.form()
-
-    # Print out our form data
-    print("CallStatus Post:", form)
-
-
 # This callback will be configured to be invoked when we are initiating an outbound call. We are asking to
 # receive all possible events which are: initiated, ringing, in-progress, completed. Right now we are just
-# monitoring these statuses, but may need to use them later to manage the calls.
-@app.get("/api/callstatus")
+# monitoring these statuses, and using it to time the length of the call.
+@app.post("/api/callstatus")
 async def callstatus(request: Request):
     print("Twilio CallStatus Callback - host=" + request.client.host)
 
     # Get our key variables from the callback. basically our call SID and status
-    query_params = request.query_params
-    call_sid = query_params.get('CallSid', None)
-    status = query_params.get('CallStatus', None)
+    form = await request.form()
+    call_sid = form.get('CallSid', None)
+    status = form.get('CallStatus', None)
 
     # Lookup our current call from the call manager and updates status
     call_obj = rosieCallManager.get_call(call_sid)
@@ -328,6 +305,7 @@ async def makecall(request: Request):
 @app.post("/api/gethistory")
 async def gethistory(request: Request):
     return {"message": "foo"}
+
 
 # Function to instantiate our web server
 def run_fastapi():
