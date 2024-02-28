@@ -1,39 +1,8 @@
-
-
 import json
+from datetime import datetime
 from twilio.rest import Client
 from rosie_utils import load_environment_variable, get_ngrok_http_url
 
-# The call manager class maintains a list of all the currently existing calls being made "to" or "from" rosie
-# This is a singleton class, so we can never instantiate more than one of these classes.
-class CallManager:
-    
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.objects = {}
-            cls._instance.unique_ids = set()
-        return cls._instance
-
-    def add_call(self, call_sid, call_obj):
-        if call_sid in self.unique_ids:
-            raise ValueError(f"Call with ID {call_sid} already exists.")
-        self.objects[call_sid] = call_obj
-        self.unique_ids.add(call_sid)
-
-    def remove_call(self, call_sid):
-        if call_sid not in self.unique_ids:
-            raise ValueError(f"Call with ID {call_sid} does not exist.")
-        del self.objects[call_sid]
-        self.unique_ids.remove(call_sid)
-
-    def get_call(self, call_sid):
-        return self.objects.get(call_sid, None)
-
-    def get_all_calls(self):
-        return list(self.objects.values())
 
 # This class represents one call Rosie is managing. This is either an outbound call that was started from a
 # server API, or an inbound call directly to our phone number. All of the assistant and voice recognition
@@ -50,6 +19,8 @@ class OutboundCall:
         self.voice_assistant = None
         self.time_to_respond = False
         self.start_recognition = False
+        self.start_time = datetime.now()
+        self.duration = 0
         self.TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
         self.TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
 
@@ -84,18 +55,32 @@ class OutboundCall:
 
         twilioUrl = get_ngrok_http_url()
         call = client.calls.create(
-                            method='GET',
-                            status_callback=twilioUrl+'/api/callstatus',
-                            status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
-                            status_callback_method='GET',
+                            method='POST',
                             url=twilioUrl+'/api/callback',
                             to=self.to_number,
-                            from_=self.from_number
+                            from_=self.from_number,
+                            status_callback=twilioUrl+'/api/callstatus',
+                            status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
+                            status_callback_method='POST'
                         )
         
         self.call_sid = call.sid
         print("Call SID: ",self.call_sid)
         return self.call_sid
+
+    def get_json_str(self):
+        data = self.get_history_obj()
+        return json.dumps(data, indent=4)
+
+    def get_history_obj(self):
+        data = {
+            "sid": self.call_sid,
+            "to_number": self.to_number,
+            "from_number": self.from_number,
+            "start_time": self.start_time,
+            "duration": self.duration
+        }
+        return data 
 
     def hang_up(self):
         call = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN).calls(self.call_sid).fetch()
@@ -104,7 +89,7 @@ class OutboundCall:
 
     def get_to_number(self):
         return self.to_number
-    
+
     def get_from_number(self):
         return self.from_number
 
@@ -152,3 +137,61 @@ class OutboundCall:
     
     def set_start_recognition(self, start_recognition: bool):
         self.start_recognition = start_recognition
+
+    def set_start_time(self, starttime):
+        self.start_time = starttime
+
+    def get_start_time(self):
+        return self.start_time
+    
+    def get_duration(self):
+        return self.duration
+    
+    def set_duration(self, duration: int):
+        self.duration = duration
+
+
+# The call manager class maintains a list of all the currently existing calls being made "to" or "from" rosie
+# This is a singleton class, so we can never instantiate more than one of these classes.
+class CallManager:
+    
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.objects = {}
+            cls._instance.unique_ids = set()
+            cls._instance.history_file = "history.json"
+        return cls._instance
+
+    def add_call(self, call_sid, call_obj):
+        if call_sid in self.unique_ids:
+            raise ValueError(f"Call with ID {call_sid} already exists.")
+        self.objects[call_sid] = call_obj
+        self.unique_ids.add(call_sid)
+
+    def remove_call(self, call_sid):
+        if call_sid not in self.unique_ids:
+            raise ValueError(f"Call with ID {call_sid} does not exist.")
+        del self.objects[call_sid]
+        self.unique_ids.remove(call_sid)
+
+    def get_call(self, call_sid):
+        return self.objects.get(call_sid, None)
+
+    def get_all_calls(self):
+        return list(self.objects.values())
+    
+    def save_history(self, call):
+        history_obj = call.get_history_obj()
+        with open(self.history_file, 'a') as file:
+
+            # Write the new history_obj to the file
+            json.dump(history_obj, file)
+
+            # Add a newline character to separate the new object from the existing content
+            file.write('\n')
+
+    def get_history(self):
+        return None

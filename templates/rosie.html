@@ -39,6 +39,8 @@
             <textarea id="textInput" name="textInput" rows="5" style="width: 100%; resize: vertical;"></textarea><br><br>
             <button type="submit">Submit</button>
         </form>
+        <hr> <!-- Decorative horizontal line -->
+        <button id="getHistoryBtn">Get History</button>
         <div class="response">
             <h3>Server Response:</h3>
             <div id="serverResponse"></div>
@@ -70,6 +72,27 @@
             .then(data => {
                 console.log("Response from server:", data);
                 // Display the response from server
+                document.getElementById("serverResponse").innerText = JSON.stringify(data);
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                // Display error message
+                document.getElementById("serverResponse").innerText = "Error: " + error.message;
+            });
+        });
+
+        document.getElementById("getHistoryBtn").addEventListener("click", function() {
+            // Make a GET request to your server's REST API endpoint for history
+            fetch('YOUR_HISTORY_API_ENDPOINT_URL')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Network response was not ok");
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("History Response from server:", data);
+                // Display the history response from server
                 document.getElementById("serverResponse").innerText = JSON.stringify(data);
             })
             .catch(error => {
