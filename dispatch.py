@@ -3,6 +3,7 @@
 import json
 import uvicorn
 import threading
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
 from twilio.twiml.voice_response import VoiceResponse, Connect
@@ -247,8 +248,8 @@ async def callback(request: Request):
     # If we don't have a call object, this means it is an incoming call to our server, so establish a new
     # call object for this session and attach to our global call manager
     if call_obj == None:
-        call = OutboundCall(to_number, from_number, call_sid)
-        rosieCallManager.add_call(call_sid, call)
+        call_obj = OutboundCall(to_number, from_number, call_sid)
+        rosieCallManager.add_call(call_sid, call_obj)
         inbound_call = True
 
     # Build a response back to the twilio server that explains how to handle the outbound stream
@@ -268,7 +269,6 @@ async def callback(request: Request):
         url = ws_url
     )
     response.append(connect)
-#    response.pause(length=15)
     return Response(content=response.to_xml(), media_type="text/xml")
 
 
@@ -277,11 +277,11 @@ async def callback(request: Request):
 # the POST body, we will have to stick to a GET method for our callbacks.
 @app.post("/api/callstatus")
 async def callstatus_post(request: Request):
-    # Parse JSON request body
-    request_body = await request.json()
-    
-    # Print contents of JSON request body
-    print("CallStatus Post:", request_body)
+    # Get our form data
+    form = await request.form()
+
+    # Print out our form data
+    print("CallStatus Post:", form)
 
 
 # This callback will be configured to be invoked when we are initiating an outbound call. We are asking to
@@ -297,10 +297,17 @@ async def callstatus(request: Request):
     status = query_params.get('CallStatus', None)
 
     # Lookup our current call from the call manager and updates status
-    current_call = rosieCallManager.get_call(call_sid)
-    current_call.set_status(status)
+    call_obj = rosieCallManager.get_call(call_sid)
+    call_obj.set_status(status)
 
     print("Call SID:", call_sid, "has status:", status)
+    if status == 'initiated':
+        call_obj.set_start_time(datetime.now())
+
+    if status == 'completed':
+        timediff = datetime.now() - call_obj.get_start_time()
+        call_obj.set_duration(timediff.total_seconds())
+        print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
 
 
 # Rest API call for Rosie that will instantiate an outbound call. This request is expecting a JSON string
@@ -316,6 +323,11 @@ async def makecall(request: Request):
 
     return {"message": "Making outbound call to: {call.get_to_number()} from: {call.get_from_number()}"}
 
+
+# Rest API call that returns all the call results stored in our local history
+@app.post("/api/gethistory")
+async def gethistory(request: Request):
+    return {"message": "foo"}
 
 # Function to instantiate our web server
 def run_fastapi():
