@@ -84,18 +84,13 @@ Please make the reservation under the name Joe Biden and the phone number if it'
 
     def last_message(self):
         return self.messages[-1]
-    
+
+    def last_message_text(self):
+        return self.messages[-1]['message']
+
     def print_thread(self):
         for message in self.messages[1:]:   # omit the system prompt since so long
             print(f"{message['created']}: {message['role']}: {message['message']}")
-
-    def conversation_ended(self):
-        for message in reversed(self.messages):
-            # Check if the role is 'assistant' and if 'goodbye' is in the message
-            if message['role'] == 'assistant' and 'goodbye' in message['message'].lower():
-                print("Found 'goodbye' in an assistant message.")
-                return True
-        return False
 
     def call_and_response(self, msg=''):
         self.next_user_response(msg)

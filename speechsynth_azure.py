@@ -59,7 +59,20 @@ class SpeechSynthAzure:
     def stop_recording(self):
         self.audio_to_file.close()
 
-
+    def time_to_speak(self, text):
+        """
+        Estimates the time to speak the given text aloud.
+        
+        :param text: The text to be spoken.
+        :return: The estimated time in seconds to speak the text.
+        """
+        words_per_minute = 150
+        words = text.split()
+        number_of_words = len(words)
+        minutes = number_of_words / words_per_minute
+        seconds = minutes * 60  # Convert minutes to seconds
+        return seconds
+    
 """     def write_wav(self, raw_data):
         # Parameters for the output WAV file
         channels = 1

@@ -92,9 +92,15 @@ class OutboundCall:
                             to=self.to_number,
                             from_=self.from_number
                         )
+        
         self.call_sid = call.sid
-        print("Call SID: ",call.sid)
+        print("Call SID: ",self.call_sid)
         return self.call_sid
+
+    def hang_up(self):
+        call = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN).calls(self.call_sid).fetch()
+        result = call.update(status='completed')
+        print("Hangup initiated: ", result)
 
     def get_to_number(self):
         return self.to_number

@@ -3,6 +3,7 @@
 import json
 import uvicorn
 import threading
+import time
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
 from twilio.twiml.voice_response import VoiceResponse, Connect
@@ -59,7 +60,6 @@ app.add_middleware(
 
 def recognizing_cb(evt, call_sid):
     global profiler
-
     call_obj = rosieCallManager.get_call(call_sid)
 
     print("LISTENING: " + evt.result.text)
@@ -125,14 +125,18 @@ async def send_response(websocket: WebSocket, call_sid: str):
             await websocket.send_json(media_data(encoded_data, stream_id))
             profiler.print("Streaming AI Voice")
             speech_synth.cleanup()
-
+        
         profiler.print("ChatGPT Done")
+
         if assistant.conversation_ended():
+            pause_time = speech_synth.time_to_speak(assistant.last_message_text())
+            time.sleep(pause_time)
+            call_obj.hang_up()
             assistant.summarize_conversation()
+
 
     except Exception as e:
         print(f"Error: {e}")
-
 
 def media_data(encoded_data, streamId):
     return {
@@ -269,6 +273,7 @@ async def callback(request: Request):
     )
     response.append(connect)
 #    response.pause(length=15)
+    print("Start call XML:", response.to_xml())
     return Response(content=response.to_xml(), media_type="text/xml")
 
 
