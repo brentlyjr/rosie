@@ -1,4 +1,5 @@
 import json
+from typing import List
 from datetime import datetime
 from twilio.rest import Client
 from rosie_utils import load_environment_variable, get_ngrok_http_url
@@ -193,5 +194,12 @@ class CallManager:
             # Add a newline character to separate the new object from the existing content
             file.write('\n')
 
-    def get_history(self):
-        return None
+    def get_history(self) -> List[dict]:
+        try:
+            with open(self.history_file, 'r') as file:
+                data = [json.loads(line) for line in file]
+        except FileNotFoundError:
+            # If the history file does not exist, return an empty list
+            print("No history file exists yet")
+            data = []
+        return data

@@ -329,9 +329,10 @@ async def makecall(request: Request):
 
 
 # Rest API call that returns all the call results stored in our local history
-@app.post("/api/gethistory")
+@app.get("/api/gethistory")
 async def gethistory(request: Request):
-    return {"message": "foo"}
+    history_data = rosieCallManager.get_history()
+    return history_data
 
 
 # Function to instantiate our web server

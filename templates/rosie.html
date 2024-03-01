@@ -11,7 +11,7 @@
         }
         .container {
             margin: 0 auto;
-            max-width: 600px;
+            width: 90%; /* Adjust the width as needed */
             padding: 20px;
             background-color: white;
             border-radius: 10px;
@@ -23,27 +23,51 @@
             border: 1px solid #ccc;
             border-radius: 5px;
         }
+        table {
+            border-collapse: collapse;
+            width: 100%; /* Set table width to 100% */
+        }
+        th, td {
+            border: 1px solid #dddddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Rosie Text</h2>
-        <p>Below are three example API calls:</p>
-        <p>1. POST /api/makecall - Initiates an outbound call.</p>
-        <p>2. POST /api/getstatus - Gets current status of call.</p>
-        <p>3. POST /api/listen - Allows you to listen in on existing call.</p>
+        <h2>Rosie Administrative Console</h2>
         <form id="textInputForm">
             <label for="apiEndpoint">API Endpoint:</label><br>
             <input type="text" id="apiEndpoint" name="apiEndpoint" value="{{ data.server_url }}/api/makecall" style="width: 100%;"><br><br>
             <label for="textInput">Enter Text:</label><br>
-            <textarea id="textInput" name="textInput" rows="5" style="width: 100%; resize: vertical;"></textarea><br><br>
-            <button type="submit">Submit</button>
+            <textarea id="textInput" name="textInput" rows="5" style="width: 100%; resize: vertical;">{
+    "TO_NUMBER": "+14157063926",
+    "FROM_NUMBER": "+14066318974"
+}</textarea><br><br>
+            <button type="submit">Make Call</button>
         </form>
         <hr> <!-- Decorative horizontal line -->
         <button id="getHistoryBtn">Get History</button>
-        <div class="response">
-            <h3>Server Response:</h3>
-            <div id="serverResponse"></div>
+        <div class="response" id="historyResponse">
+            <h3>History:</h3>
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>SID</th>
+                        <th>To Number</th>
+                        <th>From Number</th>
+                        <th>Start Time</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- History data will be inserted here -->
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -83,7 +107,7 @@
 
         document.getElementById("getHistoryBtn").addEventListener("click", function() {
             // Make a GET request to your server's REST API endpoint for history
-            fetch('YOUR_HISTORY_API_ENDPOINT_URL')
+            fetch('/api/gethistory')
             .then(response => {
                 if (!response.ok) {
                     throw new Error("Network response was not ok");
@@ -93,14 +117,41 @@
             .then(data => {
                 console.log("History Response from server:", data);
                 // Display the history response from server
-                document.getElementById("serverResponse").innerText = JSON.stringify(data);
+                displayHistory(data);
             })
             .catch(error => {
                 console.error("Error:", error);
                 // Display error message
-                document.getElementById("serverResponse").innerText = "Error: " + error.message;
+                document.getElementById("historyResponse").innerText = "Error: " + error.message;
             });
         });
+
+        // Function to display history data in the table
+        function displayHistory(historyData) {
+            var tableBody = document.getElementById("historyTable").getElementsByTagName("tbody")[0];
+            tableBody.innerHTML = ""; // Clear existing rows
+            
+            if (historyData.length === 0) {
+                // If history data is empty, display a message
+                document.getElementById("historyResponse").innerText = "No history available.";
+                return;
+            }
+
+            historyData.forEach(function(historyItem) {
+                var row = tableBody.insertRow();
+                var sidCell = row.insertCell(0);
+                var toNumberCell = row.insertCell(1);
+                var fromNumberCell = row.insertCell(2);
+                var startTimeCell = row.insertCell(3);
+                var durationCell = row.insertCell(4);
+                
+                sidCell.innerText = historyItem.sid;
+                toNumberCell.innerText = historyItem.to_number;
+                fromNumberCell.innerText = historyItem.from_number;
+                startTimeCell.innerText = historyItem.start_time;
+                durationCell.innerText = historyItem.duration;
+            });
+        }
     </script>
 </body>
 </html>
