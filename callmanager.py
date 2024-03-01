@@ -20,7 +20,7 @@ class OutboundCall:
         self.time_to_respond = False
         self.start_recognition = False
         self.start_time = datetime.now()
-        self.duration = 0
+        self.duration = 0           # System timestamp in milliseconds
         self.TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
         self.TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
 
@@ -77,7 +77,7 @@ class OutboundCall:
             "sid": self.call_sid,
             "to_number": self.to_number,
             "from_number": self.from_number,
-            "start_time": self.start_time,
+            "start_time": str(datetime.fromtimestamp(self.start_time)),
             "duration": self.duration
         }
         return data 

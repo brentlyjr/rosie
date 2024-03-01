@@ -3,7 +3,6 @@
 import json
 import uvicorn
 import threading
-from datetime import datetime
 import time
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response
@@ -124,7 +123,6 @@ async def send_response(websocket: WebSocket, call_sid: str):
             call_obj.hang_up()
             assistant.summarize_conversation()
 
-
     except Exception as e:
         print(f"Error: {e}")
 
@@ -188,6 +186,14 @@ async def on_message(websocket, message, call_sid):
         call_obj.get_recognizer().stop_continuous_recognition()
         call_obj.get_synthesizer().stop_recording()
 
+        # Logic to close out the call by setting the duration and saving the history out
+        timediff = time.time() - call_obj.get_start_time()
+        call_obj.set_duration(timediff)
+        print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
+
+        # Save the history of our object to our database
+        rosieCallManager.save_history(call_obj)
+
 
 # This is our main websocket controller. This is what we will use to collect and send both
 # inbound and outbound audio streams over our voice API. Each call will be assigned a unique
@@ -245,6 +251,9 @@ async def callback(request: Request):
         rosieCallManager.add_call(call_sid, call_obj)
         inbound_call = True
 
+    # Make this as the starttime for our call
+    call_obj.set_start_time(time.time())
+
     # Build a response back to the twilio server that explains how to handle the outbound stream
     # for this voice call
     ws_url = get_ngrok_ws_url() + '/' + call_sid
@@ -281,14 +290,28 @@ async def callstatus(request: Request):
     call_obj = rosieCallManager.get_call(call_sid)
     call_obj.set_status(status)
 
-    print("Call SID:", call_sid, "has status:", status)
+    '''
+    # Taking this code out from here because inbound calls do not get call status events. Ideally this is
+    # where the logic is to set start and end call events, but for now we will just keep them in other
+    # places where we can manually detect these events.
     if status == 'initiated':
         call_obj.set_start_time(datetime.now())
+    '''
 
+    print("Call SID:", call_sid, "has status:", status)
+
+    '''
+    # Taking this out for now because an inbound call does not get callstatus events. This is probably
+    # the right place to do it long term, but for now, we will move the duration calculation and the
+    # history saving to when we are in 'sendresponse' and detect the end of the conversation
     if status == 'completed':
-        timediff = datetime.now() - call_obj.get_start_time()
-        call_obj.set_duration(timediff.total_seconds())
+        timediff = time.time() - call_obj.get_start_time()
+        call_obj.set_duration(timediff)
         print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
+
+        # Save the history of our object to our database
+        rosieCallManager.save_history(call_obj)
+    '''
 
 
 # Rest API call for Rosie that will instantiate an outbound call. This request is expecting a JSON string
