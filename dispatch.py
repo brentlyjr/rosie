@@ -148,11 +148,11 @@ async def on_message(websocket, message, call_sid):
 
         # Because we are starting off our streams, let's instantiate the speech_synth and
         #  the speech_recognizer for this call
-        speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION)
+        speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
         speech_recognizer = speech_synth.speech_recognizer()
 
-        # And finally initialize our rosie voice assistant
-        assistant = VoiceAssistant("gpt4")
+        # And finally initialize our rosie voice assistant with LLM and call id
+        assistant = VoiceAssistant("gpt4", call_sid)
 
         # And store these with our call so we can retrieve them later
         call_obj = rosieCallManager.get_call(call_sid)

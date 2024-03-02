@@ -4,12 +4,13 @@ from openai import OpenAI
 from datetime import datetime
 
 class VoiceAssistant:
-    def __init__(self, model):
+    def __init__(self, model, call_sid):
         self.client = OpenAI()
         self.model="gpt-4"       # currently hardcoded
         self.system_prompt = self.get_system_prompt()
         self.messages = []
         self.add_message(self.system_prompt, "system")
+        self.call_sid = call_sid
     
     def get_system_prompt(self):    
         return  """You are a helpful, effective phone assistant who is amazing at scheduling restaurant reservations. 

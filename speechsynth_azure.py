@@ -1,13 +1,12 @@
 import azure.cognitiveservices.speech as speechsdk
 import base64
 import os
-import shutil
 import audioop
 import wave
 import numpy as np
 
 class SpeechSynthAzure:
-    def __init__(self, SPEECH_KEY, SPEECH_REGION):
+    def __init__(self, SPEECH_KEY, SPEECH_REGION, call_sid):
         self.speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=SPEECH_REGION)
 
         #Added for speech synthesis
@@ -25,7 +24,9 @@ class SpeechSynthAzure:
                                                             wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW)
         self.stream = speechsdk.audio.PushAudioInputStream(stream_format=self.audio_format)
         self.audio_config = speechsdk.audio.AudioConfig(stream=self.stream)
-        self.audio_to_file = ContinuousStereoWriter(sampwidth=2, framerate=8000)
+        self.audio_to_file = ContinuousStereoWriter(call_sid, sampwidth=2, framerate=8000)
+
+        self.call_sid = call_sid
 
     def speech_recognizer(self):
         return speechsdk.SpeechRecognizer(speech_config=self.speech_config, audio_config=self.audio_config)
@@ -109,12 +110,13 @@ class SpeechSynthAzure:
   """       
 
 class ContinuousStereoWriter:
-    def __init__(self, sampwidth=2, framerate=8000):
+    def __init__(self, call_sid, sampwidth=2, framerate=8000):
         self.sampwidth = sampwidth
         self.framerate = framerate
         self.channels = 2  # Stereo
         self.buffer_left = np.array([], dtype=np.int16)
         self.buffer_right = np.array([], dtype=np.int16)
+        self.call_sid = call_sid
 
 
     def add_data(self, data, channel='left'):
@@ -159,21 +161,13 @@ class ContinuousStereoWriter:
     def check_open_file(self):
         if not hasattr(self, 'output_wave'):
             destination_dir = "saved_audio"
-            base_filename = "phone_conversation"
+            # Our wav file will be named after the unique CallSid given to this specific phone call
+            base_filename = f"{self.call_sid}.wav"
 
             if not os.path.exists(destination_dir):
                 os.makedirs(destination_dir)
             
-            # Find the next available sequential number for the new filename
-            counter = 1
-            while True:
-                new_filename = f"{base_filename}_{counter}.wav"  # Assuming .audio extension, change as needed
-                destination_file = os.path.join(destination_dir, new_filename)
-                if not os.path.exists(destination_file):
-                    break
-                counter += 1
-
-            self.output_file = destination_file
+            self.output_file = os.path.join(destination_dir, base_filename)
             self.output_wave = wave.open(self.output_file, 'wb')
             self.output_wave.setnchannels(self.channels)
             self.output_wave.setsampwidth(self.sampwidth)
