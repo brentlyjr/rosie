@@ -5,7 +5,7 @@ import uvicorn
 import threading
 import time
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
 from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, get_ngrok_http_url
 from callmanager import OutboundCall, CallManager
@@ -183,16 +183,24 @@ async def on_message(websocket, message, call_sid):
     elif event == "stop":
         print("Call Has Ended")
         call_obj = rosieCallManager.get_call(call_sid)
-        call_obj.get_recognizer().stop_continuous_recognition()
-        call_obj.get_synthesizer().stop_recording()
+        call_obj.set_call_ending(True)
 
-        # Logic to close out the call by setting the duration and saving the history out
-        timediff = time.time() - call_obj.get_start_time()
-        call_obj.set_duration(timediff)
-        print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
 
-        # Save the history of our object to our database
-        rosieCallManager.save_history(call_obj)
+# This in our main clean-up API. This will get triggered when the call automatically is hung up
+# through our twilio APIs or when the call has received a termination from the other side of the web socket
+def cleanup_call(call_sid):
+    print("Cleaning up call resources")
+    call_obj = rosieCallManager.get_call(call_sid)
+    call_obj.get_recognizer().stop_continuous_recognition()
+    call_obj.get_synthesizer().stop_recording()
+
+    # Logic to close out the call by setting the duration and saving the history out
+    timediff = time.time() - call_obj.get_start_time()
+    call_obj.set_duration(timediff)
+    print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
+
+    # Save the history of our object to our database
+    rosieCallManager.save_history(call_obj)
 
 
 # This is our main websocket controller. This is what we will use to collect and send both
@@ -209,8 +217,14 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             message = await websocket.receive_text()
             await on_message(websocket, message, call_sid)
             call_obj = rosieCallManager.get_call(call_sid)
+            # Detect when it is time to now respond on this websocket
             if call_obj.get_respond_time():
                 await send_response(websocket, call_sid)
+            # Detect when our call has ended and we need to cleanup resources
+            if call_obj.get_call_ending():
+                cleanup_call(call_sid)
+                # We have finished our call and no longer need to loop in this websocket thread
+                break
 
     except WebSocketDisconnect as e:
         print(f"WebSocket disconnected: {e}")
@@ -333,6 +347,21 @@ async def makecall(request: Request):
 async def gethistory(request: Request):
     history_data = rosieCallManager.get_history()
     return history_data
+
+
+# Rest API to retrieve an audio file for a specific call and stream it back to the client
+@app.get("/api/getaudiofile")
+async def getaudiofile(request: Request):
+    query_params = request.query_params
+    call_sid = query_params.get('CallSid', None)
+    if call_sid == None:
+        return Response(status_code=404, content="Invalid CallSid")
+
+    sound_stream = rosieCallManager.get_saved_audio_stream(call_sid)
+    if sound_stream == None:
+        return Response(status_code=404, content="Audio file not found")
+
+    return StreamingResponse(sound_stream, media_type="audio/wav")
 
 
 # Function to instantiate our web server

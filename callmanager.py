@@ -1,3 +1,4 @@
+import os
 import json
 from typing import List
 from datetime import datetime
@@ -20,6 +21,7 @@ class OutboundCall:
         self.voice_assistant = None
         self.time_to_respond = False
         self.start_recognition = False
+        self.call_ending = False    # Once this is invoked, we know to start cleaning up all call resources
         self.start_time = datetime.now()
         self.duration = 0           # System timestamp in milliseconds
         self.TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
@@ -86,10 +88,15 @@ class OutboundCall:
     def hang_up(self):
         call = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN).calls(self.call_sid).fetch()
         result = call.update(status='completed')
-        print("Hangup initiated: ", result)
+        print("Hangup initiated: ", self.call_sid)
+        # Once we have hang up, we need to make our call has done so all resources get cleaned up properly
+        self.set_call_ending(True)
 
     def get_to_number(self):
         return self.to_number
+    
+    def get_call_ending(self):
+        return self.call_ending
 
     def get_from_number(self):
         return self.from_number
@@ -151,6 +158,9 @@ class OutboundCall:
     def set_duration(self, duration: int):
         self.duration = duration
 
+    def set_call_ending(self, call_ending: bool):
+        self.call_ending = call_ending
+
 
 # The call manager class maintains a list of all the currently existing calls being made "to" or "from" rosie
 # This is a singleton class, so we can never instantiate more than one of these classes.
@@ -203,3 +213,16 @@ class CallManager:
             print("No history file exists yet")
             data = []
         return data
+
+    def get_saved_audio_stream(self, call_sid):
+        # Returns a stream of the saved audio file for a particular call
+        # Returns null if
+        destination_dir = "saved_audio"
+        base_filename = f"{call_sid}.wav"
+        sound_file = os.path.join(destination_dir, base_filename)
+        print("Fetching sound file: ", sound_file)
+
+        if not os.path.exists(sound_file):
+            return None
+        
+        return open(sound_file, mode="rb")

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text Input Form</title>
+    <title>Rosie Administrative Console</title>
     <style>
         body {
             background-color: lightblue;
@@ -34,6 +34,42 @@
         }
         th {
             background-color: #f2f2f2;
+        }
+        /* Additional styles for modal */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            z-index: 999; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4); /* Black with opacity */
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 60%; /* Adjust modal width as needed */
+            max-width: 600px; /* Maximum width for modal */
+            border-radius: 5px; /* Rounded corners */
+            position: relative; /* Relative position for close button */
+        }
+        .close {
+            color: #aaaaaa;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
         }
     </style>
 </head>
@@ -71,6 +107,14 @@
         </div>
     </div>
 
+    <!-- Modal -->
+    <div id="audioModal" class="modal">
+        <div class="modal-content">
+            <span id="closeModalBtn" class="close">&times;</span>
+            <audio id="audioPlayer" controls></audio> <!-- Audio element for playback -->
+        </div>
+    </div>
+    
     <script>
         document.getElementById("textInputForm").addEventListener("submit", function(event) {
             event.preventDefault(); // Prevent the default form submission
@@ -78,7 +122,7 @@
             // Get the API endpoint and text input value
             var apiEndpoint = document.getElementById("apiEndpoint").value;
             var textInput = document.getElementById("textInput").value;
-
+    
             // Make a POST request to the specified API endpoint
             fetch(apiEndpoint, {
                 method: "POST",
@@ -104,7 +148,7 @@
                 document.getElementById("serverResponse").innerText = "Error: " + error.message;
             });
         });
-
+    
         document.getElementById("getHistoryBtn").addEventListener("click", function() {
             // Make a GET request to your server's REST API endpoint for history
             fetch('/api/gethistory')
@@ -125,7 +169,7 @@
                 document.getElementById("historyResponse").innerText = "Error: " + error.message;
             });
         });
-
+    
         // Function to display history data in the table
         function displayHistory(historyData) {
             var tableBody = document.getElementById("historyTable").getElementsByTagName("tbody")[0];
@@ -136,7 +180,7 @@
                 document.getElementById("historyResponse").innerText = "No history available.";
                 return;
             }
-
+    
             historyData.forEach(function(historyItem) {
                 var row = tableBody.insertRow();
                 var sidCell = row.insertCell(0);
@@ -145,13 +189,66 @@
                 var startTimeCell = row.insertCell(3);
                 var durationCell = row.insertCell(4);
                 
-                sidCell.innerText = historyItem.sid;
+                // Create a hyperlink for SID
+                var sidLink = document.createElement('a');
+                sidLink.href = '#'; // Set href attribute to '#' for now
+                sidLink.innerText = historyItem.sid;
+                sidLink.onclick = function(event) {
+                    event.preventDefault(); // Prevent default action of hyperlink
+                    
+                    // Fetch audio file for the SID
+                    fetch('/api/getaudiofile?CallSid=' + historyItem.sid)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error("Network response was not ok");
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        // Remove any existing audio element from the modal
+                        var modalContent = document.querySelector('.modal-content');
+                        var existingAudio = modalContent.querySelector('audio');
+                        if (existingAudio) {
+                            modalContent.removeChild(existingAudio);
+                        }
+                        
+                        // Create and append a new audio element for playback
+                        var audio = document.createElement('audio');
+                        audio.controls = true;
+                        audio.src = URL.createObjectURL(blob);
+                        modalContent.appendChild(audio);
+                        
+                        // Show the modal
+                        var modal = document.getElementById('audioModal');
+                        modal.style.display = 'block';
+                    })
+                    .catch(error => {
+                        console.error("Error:", error);
+                        // Display error message
+                        alert("Error fetching audio file: " + error.message);
+                    });
+                };
+    
+                sidCell.appendChild(sidLink);
                 toNumberCell.innerText = historyItem.to_number;
                 fromNumberCell.innerText = historyItem.from_number;
                 startTimeCell.innerText = historyItem.start_time;
                 durationCell.innerText = historyItem.duration;
             });
         }
+    
+        // Close the modal when the close button is clicked
+        document.getElementById('closeModalBtn').onclick = function() {
+            var modal = document.getElementById('audioModal');
+            modal.style.display = 'none'; // Hide the modal
+            
+            // Remove the audio element from the modal
+            var modalContent = document.querySelector('.modal-content');
+            var audio = modalContent.querySelector('audio');
+            if (audio) {
+                modalContent.removeChild(audio);
+            }
+        };
     </script>
 </body>
 </html>
