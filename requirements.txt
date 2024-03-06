@@ -1,0 +1,9 @@
+azure-cognitiveservices-speech
+fastapi
+jinja2
+numpy
+openai
+python-multipart
+twilio
+uvicorn
+websockets
