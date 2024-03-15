@@ -4,6 +4,7 @@ import json
 import uvicorn
 import threading
 import time
+import base64
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
@@ -102,6 +103,7 @@ async def send_response(websocket: WebSocket, call_sid: str):
 
     try:
         for synth_text in assistant.next_chunk():
+            # Only gets into this loop when we have another chunk of data back from ChatGPT
             profiler.print("Chat chunk")
             profiler.update("ChatGPT-chunk")
             print("Txt to convert to speech: ", synth_text)
@@ -112,14 +114,14 @@ async def send_response(websocket: WebSocket, call_sid: str):
             # Send the encoded data over the WebSocket stream
             #print("Sending Media Message: ")
             await websocket.send_json(media_data(encoded_data, stream_id))
+            call_obj.call_stream.write(base64.b64decode(encoded_data))
             profiler.print("Streaming AI Voice")
-            speech_synth.cleanup()
         
         profiler.print("ChatGPT Done")
 
         if assistant.conversation_ended():
             pause_time = speech_synth.time_to_speak(assistant.last_message_text())
-            time.sleep(pause_time)
+            time.sleep(pause_time + 3)
             call_obj.hang_up()
             assistant.summarize_conversation()
 
@@ -175,8 +177,10 @@ async def on_message(websocket, message, call_sid):
     elif event == "media":
         payload = msg['media']['payload']
         
+        call_obj = rosieCallManager.get_call(call_sid)
+        if call_obj.get_respond_time() == False:
+            call_obj.call_stream.write(base64.b64decode(payload))
         if payload:
-            call_obj = rosieCallManager.get_call(call_sid)
             speech_synth = call_obj.get_synthesizer()
             speech_synth.write_stream(payload)
  
@@ -192,7 +196,6 @@ def cleanup_call(call_sid):
     print("Cleaning up call resources")
     call_obj = rosieCallManager.get_call(call_sid)
     call_obj.get_recognizer().stop_continuous_recognition()
-    call_obj.get_synthesizer().stop_recording()
 
     # Logic to close out the call by setting the duration and saving the history out
     timediff = time.time() - call_obj.get_start_time()
@@ -201,6 +204,7 @@ def cleanup_call(call_sid):
 
     # Save the history of our object to our database
     rosieCallManager.save_history(call_obj)
+    call_obj.save_audio_recording()
 
 
 # This is our main websocket controller. This is what we will use to collect and send both

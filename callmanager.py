@@ -1,5 +1,8 @@
 import os
+import io
 import json
+import wave
+import audioop
 from typing import List
 from datetime import datetime
 from twilio.rest import Client
@@ -26,6 +29,8 @@ class OutboundCall:
         self.duration = 0           # System timestamp in milliseconds
         self.TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
         self.TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
+        self.call_stream = io.BytesIO() # Does not need to be threadsafe as we only have one writer and one reader from this stream
+        self.audio_dir = "saved_audio"
 
     # Constructor that takes a JSON object with the to and from numbers
     @classmethod
@@ -91,6 +96,32 @@ class OutboundCall:
         print("Hangup initiated: ", self.call_sid)
         # Once we have hang up, we need to make our call has done so all resources get cleaned up properly
         self.set_call_ending(True)
+
+    def save_audio_recording(self):
+        self.call_stream.seek(0)
+
+        # Save the contents of the BytesIO buffer to a binary file
+        # THis code is currently not being used. But this is the RAW data straight from the stream
+        # It is in the format U-Law - Default Endianess, 1-channel and a 8K sample rate
+        #
+        # with open('output.bin', 'wb') as f:
+        #    f.write(self.call_stream.getvalue())
+
+        self.call_stream.seek(0)
+        data = self.call_stream.getvalue()
+
+        # Decode the μ-law encoded data to Linear PCM - this is what is needed to save out a WAVE file
+        pcm_data = audioop.ulaw2lin(data, 2)
+
+        base_filename = f"{self.call_sid}.wav"
+        sound_file = os.path.join(self.audio_dir, base_filename)
+
+        # Save the PCM data to a WAV file
+        with wave.open(sound_file, 'wb') as wav_file:
+            wav_file.setnchannels(1)  # Mono
+            wav_file.setsampwidth(2)   # 8-bit
+            wav_file.setframerate(8000)  # Sample rate
+            wav_file.writeframes(pcm_data)
 
     def get_to_number(self):
         return self.to_number
@@ -174,6 +205,7 @@ class CallManager:
             cls._instance.objects = {}
             cls._instance.unique_ids = set()
             cls._instance.history_file = "history.json"
+            cls._instance.audio_dir = "saved_audio"
         return cls._instance
 
     def add_call(self, call_sid, call_obj):
@@ -217,9 +249,8 @@ class CallManager:
     def get_saved_audio_stream(self, call_sid):
         # Returns a stream of the saved audio file for a particular call
         # Returns null if
-        destination_dir = "saved_audio"
         base_filename = f"{call_sid}.wav"
-        sound_file = os.path.join(destination_dir, base_filename)
+        sound_file = os.path.join(self.audio_dir, base_filename)
         print("Fetching sound file: ", sound_file)
 
         if not os.path.exists(sound_file):
