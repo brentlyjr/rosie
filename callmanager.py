@@ -257,3 +257,8 @@ class CallManager:
             return None
         
         return open(sound_file, mode="rb")
+
+
+
+# Instantiate our global call manager to track all concurrenet calls
+rosieCallManager = CallManager()

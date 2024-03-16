@@ -8,10 +8,11 @@ import base64
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, get_ngrok_http_url
-from callmanager import OutboundCall, CallManager
+from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, get_ngrok_http_url, profiler
+from callmanager import OutboundCall, CallManager, rosieCallManager
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
+from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 
@@ -24,12 +25,6 @@ SERVICE_PORT = load_environment_variable("SERVICE_PORT")
 # Some critical global variables
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-
-# Our global profiler to give us overall timing of various components
-profiler = Profiler()
-
-# Instantiate our global call manager to track all concurrenet calls
-rosieCallManager = CallManager()
 
 
 # This CORS middleware is needed to allow cross-site domains. Without it, we are not allowed
@@ -44,50 +39,6 @@ app.add_middleware(
     max_age=600,  # Cache preflight response for 10 minutes
 )
 
-
-# TODO: Make a variable for GPT-4 and downgrade when testing to save money!
-
-
-def recognizing_cb(evt, call_sid):
-    global profiler
-    call_obj = rosieCallManager.get_call(call_sid)
-
-    print("LISTENING: " + evt.result.text)
-    if not call_obj.get_start_recognition():
-        profiler.update("Listening")
-        call_obj.set_start_recognition(True)
-
-
-def recognized_cb(evt, call_sid):
-    global profiler
-
-    call_obj = rosieCallManager.get_call(call_sid)
-    assistant = call_obj.get_voice_assistant()
-
-    profiler.update("Recognized")
-    call_obj.set_start_recognition(False)
-    txt = evt.result.text
-    if not txt:
-        print("RECOGNIZED: None ---- ENDING")
-        return
-    
-    print("RECOGNIZED: " + txt)
-    profiler.print("Recognized")
-
-    # My edits - start translating as soon as there is a pause
-
-    assistant.next_user_response(txt)   
-    assistant.print_thread()
-    print("-----------------------------------")
-    profiler.update("ChatGPT-Full")
-    profiler.update("ChatGPT-chunk")
-    assistant.next_assistant_response()
-    profiler.print("Next_Assistant")
-    print("-----------------------------------")
-
-    # We now tell our call object it is time to respond back to the user
-    call_obj.set_respond_time(True)
-    
 
 # This function gets called when we are trying to send some media data inbound on the phone call
 async def send_response(websocket: WebSocket, call_sid: str):
@@ -116,12 +67,12 @@ async def send_response(websocket: WebSocket, call_sid: str):
             await websocket.send_json(media_data(encoded_data, stream_id))
             call_obj.call_stream.write(base64.b64decode(encoded_data))
             profiler.print("Streaming AI Voice")
-        
+
         profiler.print("ChatGPT Done")
 
         if assistant.conversation_ended():
             pause_time = speech_synth.time_to_speak(assistant.last_message_text())
-            time.sleep(pause_time + 3)
+            time.sleep(pause_time)
             call_obj.hang_up()
             assistant.summarize_conversation()
 
@@ -151,7 +102,7 @@ async def on_message(websocket, message, call_sid):
         # Because we are starting off our streams, let's instantiate the speech_synth and
         #  the speech_recognizer for this call
         speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
-        speech_recognizer = speech_synth.speech_recognizer()
+        speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
         # And finally initialize our rosie voice assistant with LLM and call id
         assistant = VoiceAssistant("gpt4", call_sid)
@@ -163,26 +114,18 @@ async def on_message(websocket, message, call_sid):
         call_obj.set_stream_id(stream_id)
         call_obj.set_voice_assistant(assistant)
 
-        # Now instantiate our callbacks for these streams
-        speech_recognizer.recognizing.connect(lambda evt: recognizing_cb(evt, call_sid))
-        speech_recognizer.recognized.connect(lambda evt: recognized_cb(evt, call_sid))
-        speech_recognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}'.format(evt)))
-        speech_recognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
-        speech_recognizer.canceled.connect(lambda evt: print('CANCELED {}'.format(evt)))
-
         # Start continuous speech recognition
-        speech_recognizer.start_continuous_recognition()
+        speech_recognizer.start_recognition()
 
     # The event that carries our audio stream
     elif event == "media":
         payload = msg['media']['payload']
-        
         call_obj = rosieCallManager.get_call(call_sid)
         if call_obj.get_respond_time() == False:
             call_obj.call_stream.write(base64.b64decode(payload))
         if payload:
-            speech_synth = call_obj.get_synthesizer()
-            speech_synth.write_stream(payload)
+            speech_recognizer = call_obj.get_recognizer()
+            speech_recognizer.write_stream(payload)
  
     elif event == "stop":
         print("Call Has Ended")
@@ -195,7 +138,8 @@ async def on_message(websocket, message, call_sid):
 def cleanup_call(call_sid):
     print("Cleaning up call resources")
     call_obj = rosieCallManager.get_call(call_sid)
-    call_obj.get_recognizer().stop_continuous_recognition()
+    speech_recognizer = call_obj.get_recognizer()
+    speech_recognizer.stop_recognition()
 
     # Logic to close out the call by setting the duration and saving the history out
     timediff = time.time() - call_obj.get_start_time()
@@ -349,6 +293,8 @@ async def makecall(request: Request):
 # Rest API call that returns all the call results stored in our local history
 @app.get("/api/gethistory")
 async def gethistory(request: Request):
+    global rosieCallManager
+
     history_data = rosieCallManager.get_history()
     return history_data
 
