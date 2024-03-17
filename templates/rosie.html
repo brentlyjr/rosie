@@ -35,6 +35,16 @@
         th {
             background-color: #f2f2f2;
         }
+
+        textarea {
+            width: 100%;
+            resize: none; /* Disable resizing */
+        }
+        .label-textarea {
+            display: inline-block;
+            width: 200px; /* Adjust the width as needed */
+        }
+
         /* Additional styles for modal */
         .modal {
             display: none; /* Hidden by default */
@@ -71,19 +81,73 @@
             color: #000;
             text-decoration: none;
         }
+        /* Style for label and input field */
+        label {
+            display: inline-block;
+            width: 150px; /* Adjust label width as needed */
+        }
+        input[type="text"] {
+            width: 100px; /* Fixed width for input field */
+            margin-left: 10px; /* Adjust margin as needed */
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Rosie Administrative Console</h2>
+        <hr> <!-- Decorative horizontal line -->
         <form id="textInputForm">
-            <label for="apiEndpoint">API Endpoint:</label><br>
-            <input type="text" id="apiEndpoint" name="apiEndpoint" value="{{ data.server_url }}/api/makecall" style="width: 100%;"><br><br>
-            <label for="textInput">Enter Text:</label><br>
-            <textarea id="textInput" name="textInput" rows="5" style="width: 100%; resize: vertical;">{
-    "TO_NUMBER": "+14157063926",
-    "FROM_NUMBER": "+14066318974"
-}</textarea><br><br>
+            <!-- Multi-line text field
+            Eventually, we may want to allow the prmopt to be customized from the HTML
+            <label class="label-textarea" for="promptMessage">Assistant Prompt Message:</label><br>
+            <textarea id="promptMessage" name="promptMessage" rows="4" cols="100"></textarea><br>
+            -->
+
+            <!-- Input field for "To Number" -->
+            <label for="toNumber">To Number:</label>
+            <input type="text" id="toNumber" name="toNumber" maxlength="10" title="To Number" required value="4157063926">
+            <br>
+
+            <!-- Input field for "From Number" -->
+            <label for="fromNumber">From Number:</label>
+            <input type="text" id="fromNumber" name="fromNumber" maxlength="10" title="From Number" required value="4066318974">
+            <br>
+            
+            <!-- Input field for "Reservation Name" -->
+            <label for="reservationName">Reservation Name:</label>
+            <input type="text" id="reservationName" name="reservationName" title="reservationName" required value="Joe Biden">
+            <br>
+
+            <!-- Date Picker for "Desired Date" -->
+            <label for="reservationDate">Reservation Date:</label>
+            <input type="date" id="reservationDate" name="reservationDate">
+            <br>
+
+            <!-- Time Picker for "Desired Time" -->
+            <label for="reservationTime">Reservation Time:</label>
+            <input type="time" id="reservationTime" name="reservationTime">
+            <br>
+
+            <label for="partySize">Party Size:</label>
+            <select id="partySize" name="partySize">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7" selected>7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
+            </select>
+            <br>
+
+            <label class="label-special-textarea" for="specialRequests">Special Requests:</label><br>
+            <textarea id="specialRequests" name="specialRequests" rows="1" cols="100"></textarea>
+
+            <br><br>
+
             <button type="submit">Make Call</button>
         </form>
         <hr> <!-- Decorative horizontal line -->
@@ -116,20 +180,46 @@
     </div>
     
     <script>
+        // Function to handle form submission
         document.getElementById("textInputForm").addEventListener("submit", function(event) {
             event.preventDefault(); // Prevent the default form submission
             
             // Get the API endpoint and text input value
-            var apiEndpoint = document.getElementById("apiEndpoint").value;
-            var textInput = document.getElementById("textInput").value;
-    
+            var apiEndpoint = "{{ data.server_url }}/api/makecall";
+            var toNumber = document.getElementById("toNumber").value;
+            var fromNumber = document.getElementById("fromNumber").value;
+            var reservationName = document.getElementById("reservationName").value;
+            var reservationDate = document.getElementById("reservationDate").value;
+            var reservationTime = document.getElementById("reservationTime").value;
+            var partySize = document.getElementById("partySize").value;
+            var specialRequests = document.getElementById("specialRequests").value;
+
+            // Store the text input value in a cookie
+            setCookie("toNumber", toNumber, 30); // Expires in 30 days
+            setCookie("fromNumber", fromNumber, 30); // Expires in 30 days
+            setCookie("reservationName", reservationName, 30);
+            setCookie("partySize", partySize, 30);
+            setCookie("specialRequests", specialRequests, 30);
+            // Reservation date and reservation time are not stored values in our cookie
+
+            // Format the request body
+            var requestBody = {
+                TO_NUMBER: "+1" + toNumber,
+                FROM_NUMBER: "+1" + fromNumber,
+                RESERVATION_DATE: reservationDate,
+                RESERVATION_TIME: reservationTime,
+                RESERVATION_NAME: reservationName,
+                PARTY_SIZE: partySize,
+                SPECIAL_REQUESTS: specialRequests
+            };
+
             // Make a POST request to the specified API endpoint
             fetch(apiEndpoint, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify(textInput)
+                body: JSON.stringify(requestBody)
             })
             .then(response => {
                 if (!response.ok) {
@@ -140,15 +230,75 @@
             .then(data => {
                 console.log("Response from server:", data);
                 // Display the response from server
-                document.getElementById("serverResponse").innerText = JSON.stringify(data);
+                // document.getElementById("serverResponse").innerText = JSON.stringify(data);
             })
             .catch(error => {
                 console.error("Error:", error);
                 // Display error message
-                document.getElementById("serverResponse").innerText = "Error: " + error.message;
+                // document.getElementById("serverResponse").innerText = "Error: " + error.message;
             });
         });
+
+        // Function to check for and set the value of the text input field from the cookie
+        window.onload = function() {
+            // Retrieve all our cookies and default values from last time
+            var toNumberCookie = getCookie("toNumber");
+            if (toNumberCookie !== "")
+                document.getElementById("toNumber").value = toNumberCookie;
+            var fromNumberCookie = getCookie("fromNumber");
+            if (fromNumberCookie !== "")
+                document.getElementById("fromNumber").value = fromNumberCookie;
+            var reservationNameCookie = getCookie("reservationName");
+            if (reservationNameCookie !== "")
+                document.getElementById("reservationName").value = reservationNameCookie;
+                var specialRequestsCookie = getCookie("specialRequests");
+            if (specialRequestsCookie !== "")
+                document.getElementById("specialRequests").value = specialRequestsCookie;
+            var partySizeCookie = getCookie("partySize");
+            if (partySizeCookie !== "")
+                document.getElementById("partySize").value = partySizeCookie;
+
+            // Get today's date
+            var today = new Date();
+            // Add one day to today's date to get tomorrow's date
+            var tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            // Format the date as YYYY-MM-DD
+            var tomorrowFormatted = tomorrow.toISOString().slice(0, 10);
+            // Set the value of your input field to tomorrow's date, so our picker will always be one day in the future
+            document.getElementById("reservationDate").value = tomorrowFormatted;
+
+            // Get the time input element
+            var timePicker = document.getElementById("reservationTime").value = "19:30";
+        };
     
+        // Function to set a cookie with the value of the text input field
+        function setCookie(cookieName, cookieValue, expirationDays) {
+            var d = new Date();
+            d.setTime(d.getTime() + (expirationDays * 24 * 60 * 60 * 1000));
+            var expires = "expires=" + d.toUTCString();
+            document.cookie = cookieName + "=" + cookieValue + ";" + expires + ";path=/";
+        }
+
+        // Function to get the value of a cookie
+        function getCookie(cookieName) {
+            var name = cookieName + "=";
+            var decodedCookie = decodeURIComponent(document.cookie);
+            var cookieArray = decodedCookie.split(';');
+            for (var i = 0; i < cookieArray.length; i++) {
+                var cookie = cookieArray[i];
+                while (cookie.charAt(0) == ' ') {
+                    cookie = cookie.substring(1);
+                }
+                if (cookie.indexOf(name) == 0) {
+                    var cookieValue = cookie.substring(name.length, cookie.length);
+                    // Trim whitespace and parse the JSON data
+                    return cookieValue.trim();
+                }
+            }
+            return ""; // Return empty string if cookie is not found
+        }
+
         document.getElementById("getHistoryBtn").addEventListener("click", function() {
             // Make a GET request to your server's REST API endpoint for history
             fetch('{{ data.server_url }}/api/gethistory')
@@ -249,6 +399,19 @@
                 modalContent.removeChild(audio);
             }
         };
+
+        // Restrict input to numeric characters only
+        document.getElementById('toNumber').addEventListener('input', function(event) {
+            var input = event.target.value;
+            var sanitizedInput = input.replace(/\D/g, ''); // Remove non-digit characters
+            event.target.value = sanitizedInput; // Update the input value
+        });
+        // Restrict input to numeric characters only
+        document.getElementById('fromNumber').addEventListener('input', function(event) {
+            var input = event.target.value;
+            var sanitizedInput = input.replace(/\D/g, ''); // Remove non-digit characters
+            event.target.value = sanitizedInput; // Update the input value
+        });
     </script>
 </body>
 </html>

@@ -15,7 +15,7 @@ from rosie_utils import load_environment_variable, get_ngrok_http_url
 class OutboundCall:
 
     # Constructor that takes the to and from numbers directly
-    def __init__(self, to_number, from_number, call_sid):
+    def __init__(self, to_number, from_number, call_sid=0):
         self.to_number = to_number
         self.from_number = from_number
         self.call_sid = call_sid
@@ -31,20 +31,6 @@ class OutboundCall:
         self.TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
         self.call_stream = io.BytesIO() # Does not need to be threadsafe as we only have one writer and one reader from this stream
         self.audio_dir = "saved_audio"
-
-    # Constructor that takes a JSON object with the to and from numbers
-    @classmethod
-    def from_string(cls, json_str):
-        try:
-            # Parse our json string
-            data = json.loads(json_str)
-            # Extract variables from JSON data
-            to_num = data.get("TO_NUMBER", 0)
-            from_num = data.get("FROM_NUMBER", 0)
-        except json.JSONDecodeError:
-            print("Error: Failed to decode JSON")
-
-        return cls(to_num, from_num, 0)
 
     # Parse the json passed into this class
     def load_json(self, json_str):

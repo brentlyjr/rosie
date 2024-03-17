@@ -104,15 +104,11 @@ async def on_message(websocket, message, call_sid):
         speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
         speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
-        # And finally initialize our rosie voice assistant with LLM and call id
-        assistant = VoiceAssistant("gpt4", call_sid)
-
         # And store these with our call so we can retrieve them later
         call_obj = rosieCallManager.get_call(call_sid)
         call_obj.set_synthesizer(speech_synth)
         call_obj.set_recognizer(speech_recognizer)
         call_obj.set_stream_id(stream_id)
-        call_obj.set_voice_assistant(assistant)
 
         # Start continuous speech recognition
         speech_recognizer.start_recognition()
@@ -210,7 +206,18 @@ async def callback(request: Request):
     # call object for this session and attach to our global call manager
     if call_obj == None:
         call_obj = OutboundCall(to_number, from_number, call_sid)
+
+        # Setup a Rosie voice assistant for this call with LLM and call id
+        assistant = VoiceAssistant()
+
+        # And load the system propmt so our call will execute with all the right details
+        assistant.load_system_prompt()
+        call_obj.set_voice_assistant(assistant)
+
+        # Put this call in our active call queue for tracking
         rosieCallManager.add_call(call_sid, call_obj)
+
+        # Mark this as an inbound call
         inbound_call = True
 
     # Make this as the starttime for our call
@@ -282,12 +289,41 @@ async def callstatus(request: Request):
 async def makecall(request: Request):
     # Parse JSON request body for this call
     request_body = await request.json()
-    
-    call_obj = OutboundCall.from_string(request_body)
-    callId = call_obj.make_call()
-    rosieCallManager.add_call(call_obj.get_call_sid(), call_obj)
 
-    return {"message": "Making outbound call to: {call.get_to_number()} from: {call.get_from_number()}"}
+    # Extract our variables
+    toNumber = request_body.get('TO_NUMBER', None)
+    fromNumber = request_body.get('FROM_NUMBER', None)
+    reservationName = request_body.get('RESERVATION_NAME', None)
+    reservationDate = request_body.get('RESERVATION_DATE', None)
+    reservationTime = request_body.get('RESERVATION_TIME', None)
+    partySize = request_body.get('PARTY_SIZE', None)
+    specialRequests = request_body.get('SPECIAL_REQUESTS', None)
+    # promptMessage = request_body.get('PROMPT_MESSAGE', None)
+
+    # Initiate a new call object for this call we are starting
+    call_obj = OutboundCall(toNumber, fromNumber)
+
+    # Setup a Rosie voice assistant for this call with LLM and call id
+    assistant = VoiceAssistant()
+
+    # Set all the tokens for our call
+    assistant.set_party_size(partySize)
+    assistant.set_reservation_date(reservationDate)
+    assistant.set_reservation_time(reservationTime)
+    assistant.set_special_requests(specialRequests)
+    assistant.set_reservation_name(reservationName)
+
+    # And load the system propmt so our call will execute with all the right details and save with call
+    assistant.load_system_prompt()
+    call_obj.set_voice_assistant(assistant)
+
+    # Start the outbound call process
+    call_sid = call_obj.make_call()
+
+    # Add this to our queue of "live" outbound calls
+    rosieCallManager.add_call(call_sid, call_obj)
+
+    return {"message": "Making outbound call to: {toNumber} from: {fromNumber}"}
 
 
 # Rest API call that returns all the call results stored in our local history

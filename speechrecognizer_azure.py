@@ -65,13 +65,6 @@ class SpeechRecognizerAzure:
 
         self.speech_recognizer = speechsdk.SpeechRecognizer(speech_config=self.speech_config, audio_config=self.audio_config)
 
-        # self.audio_format = speechsdk.audio.AudioStreamFormat(samples_per_second=8000,
-        #                                                    bits_per_sample=8,
-        #                                                    channels=1, 
-        #                                                    wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW)
-        # self.push_stream = speechsdk.audio.PushAudioInputStream(stream_format=self.audio_format)
-        # self.audio_config = speechsdk.audio.AudioConfig(stream=self.push_stream)
-
         # Now instantiate our callbacks for these streams
         self.speech_recognizer.recognizing.connect(self.recognizing_callback)
         self.speech_recognizer.recognized.connect(self.recognized_callback)
