@@ -2,6 +2,7 @@ import json
 import time
 from openai import OpenAI
 from datetime import datetime
+import re
 
 class VoiceAssistant:
     def __init__(self, model, call_sid):
@@ -11,7 +12,7 @@ class VoiceAssistant:
         self.messages = []
         self.add_message(self.system_prompt, "system")
         self.call_sid = call_sid
-    
+
     def get_system_prompt(self):    
         return  """You are a helpful, effective phone assistant who is amazing at scheduling restaurant reservations. 
 You will be acting as my agent that makes dinner reservation for me.  Your goal is to query the restaurant and find a day and time that will work for my group.  The order to ask questions are:
@@ -33,8 +34,15 @@ If there are no vegetarian options available, please decline the reservation, th
 
 Please keep your responses short, only 1 or 2 sentences at a time. And please ask no more than one question at a time.
 
-Please make the reservation under the name Joe Biden and the phone number if it's asked for is 415-123-4567"""
-    
+Please make the reservation under the name Joseph Campbell and the phone number if it's asked for is 415-123-4567
+
+Now for your really important instructions. I will often provide you questions that will need a reponse in the form of a number.
+I might say Press 1 to get directions, press 2 for reservations, press 3 for the takeout.  If I ever request 
+that you press or select a number to make a decision. So in this case you would simply repond with Press 2. Always say Press and then the number
+in these situations. 
+Otherwise, provide the full english answer.  
+"""
+
     def add_message(self, msg, role):
         current_datetime = datetime.now()
         # Convert to a timestamp (seconds since the Unix epoch)
@@ -100,6 +108,19 @@ Please make the reservation under the name Joe Biden and the phone number if it'
             pass
         self.print_thread()
 
+    def find_press_digits(self, text):
+        # Regular expression pattern to find "Press {digits}"
+        pattern = r"Press (\d+)"
+        
+        # Find all matches
+        matches = re.findall(pattern, text)
+        
+        # Check if there are any matches and return the first one
+        if matches:
+            return matches[0]
+        else:
+            return None
+    
     def conversation_ended(self):
         # Array of phrases to check for
         end_phrases = ["goodbye", "see you later", "farewell", "bye", "great day"]

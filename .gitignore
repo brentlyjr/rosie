@@ -6,3 +6,6 @@ __pycache__/
 temp/
 saved_audio/
 history.json
+tmp.py
+*.ipynb
+.ipynb_checkpoints

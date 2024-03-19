@@ -12,12 +12,12 @@ class SpeechSynthAzure:
         #Added for speech synthesis
         self.speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Raw8Khz8BitMonoMULaw)
         self.synth_file_name = "synth_text.bin"
-
-        self.speech_config.speech_synthesis_voice_name="en-US-EmmaNeural"
+        self.speech_config.speech_synthesis_voice_name="en-US-EmmaNeural" 
 
         # Let's allow swearing to come through
         self.speech_config.set_profanity(speechsdk.ProfanityOption.Raw)
 
+        #Setup for speech recognition
         self.audio_format = speechsdk.audio.AudioStreamFormat(samples_per_second=8000,
                                                             bits_per_sample=8,
                                                             channels=1, 
@@ -44,8 +44,20 @@ class SpeechSynthAzure:
         self.audio_to_file.add_data(data_chunk, 'left')
         return encoded_data
 
+    def play_digit(self, digit):
+        dest_filename_template = "phone_sounds/audacity-ulaw-break/digit-{digit}.raw"
+        dest_digit_file = dest_filename_template.format(digit=digit)
+
+        print(f"Playing sound for digit-{digit}")
+        with open(dest_digit_file, 'rb') as binary_file:
+            data_chunk = binary_file.read()
+            encoded_data = base64.b64encode(data_chunk).decode('utf-8')
+        return encoded_data
+
+
     def write_stream(self, payload):
         # Decode our payload and append to our array
+        # Write data to speech recognizer stream
         self.stream.write(base64.b64decode(payload))
         self.audio_to_file.add_data(base64.b64decode(payload), 'right')
    
@@ -174,6 +186,14 @@ class ContinuousStereoWriter:
             self.output_wave.setframerate(self.framerate)
 
     def close(self):
+        #check to see if any remaining audio to write
+        if len(self.buffer_left):
+            # Pad the right buffer with zeros to match the new left buffer length
+            pad_length = len(self.buffer_left) - len(self.buffer_right)
+            if pad_length > 0:
+                self.buffer_right = np.append(self.buffer_right, np.zeros(pad_length, dtype=np.int16))
+                self.write_data()
+                
         if hasattr(self, 'output_wave') and self.output_wave is not None:
             self.output_wave.close()  
             delattr(self, 'output_wave')

@@ -13,7 +13,7 @@ from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
-
+from live_stream import LiveAudioStreamManager
 
 # Load all the required environment variables with proper error checking
 SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
@@ -26,10 +26,11 @@ templates = Jinja2Templates(directory="templates")
 
 # Our global profiler to give us overall timing of various components
 profiler = Profiler()
+counter= 0
 
 # Instantiate our global call manager to track all concurrenet calls
 rosieCallManager = CallManager()
-
+liveAudioStreamManager = LiveAudioStreamManager(rosieCallManager)
 
 # This CORS middleware is needed to allow cross-site domains. Without it, we are not allowed
 # to receive https calls from domains other than the ones we are running our server on
@@ -49,12 +50,16 @@ app.add_middleware(
 
 def recognizing_cb(evt, call_sid):
     global profiler
-    call_obj = rosieCallManager.get_call(call_sid)
+    global counter
+    counter =0
 
+    call_obj = rosieCallManager.get_call(call_sid)
+    
     print("LISTENING: " + evt.result.text)
     if not call_obj.get_start_recognition():
         profiler.update("Listening")
         call_obj.set_start_recognition(True)
+    profiler.print("In recognizing")
 
 
 def recognized_cb(evt, call_sid):
@@ -83,7 +88,6 @@ def recognized_cb(evt, call_sid):
     assistant.next_assistant_response()
     profiler.print("Next_Assistant")
     print("-----------------------------------")
-
     # We now tell our call object it is time to respond back to the user
     call_obj.set_respond_time(True)
     
@@ -106,12 +110,17 @@ async def send_response(websocket: WebSocket, call_sid: str):
             profiler.update("ChatGPT-chunk")
             print("Txt to convert to speech: ", synth_text)
             profiler.update("SpeechSynth")
-            encoded_data = speech_synth.generate_speech(synth_text)
+            digit_presses = assistant.find_press_digits(synth_text)
             profiler.print("Generate speech")
-
-            # Send the encoded data over the WebSocket stream
-            #print("Sending Media Message: ")
-            await websocket.send_json(media_data(encoded_data, stream_id))
+            #digit_presses = "1234567890"
+            if digit_presses:
+                for digit in digit_presses:
+                    encoded_data = speech_synth.play_digit(int(digit))
+                    await websocket.send_json(media_data(encoded_data, stream_id))
+            else:
+                encoded_data = speech_synth.generate_speech(synth_text)
+                await websocket.send_json(media_data(encoded_data, stream_id))
+            
             profiler.print("Streaming AI Voice")
             speech_synth.cleanup()
         
@@ -138,6 +147,7 @@ def media_data(encoded_data, streamId):
 async def on_message(websocket, message, call_sid):
     msg = json.loads(message)
     event = msg.get("event")
+    global counter
 
     if event == "connected":
         print("A new stream has connected for call:", call_sid)
@@ -170,11 +180,14 @@ async def on_message(websocket, message, call_sid):
 
         # Start continuous speech recognition
         speech_recognizer.start_continuous_recognition()
+        profiler.update('azuredone')
+
 
     # The event that carries our audio stream
-    elif event == "media":
+    elif event == "media": 
         payload = msg['media']['payload']
-        
+        counter +=1
+#        print(f"In media{counter}")
         if payload:
             call_obj = rosieCallManager.get_call(call_sid)
             speech_synth = call_obj.get_synthesizer()
@@ -193,7 +206,7 @@ def cleanup_call(call_sid):
     call_obj = rosieCallManager.get_call(call_sid)
     call_obj.get_recognizer().stop_continuous_recognition()
     call_obj.get_synthesizer().stop_recording()
-
+    liveAudioStreamManager.stop_stream(call_sid)
     # Logic to close out the call by setting the duration and saving the history out
     timediff = time.time() - call_obj.get_start_time()
     call_obj.set_duration(timediff)
@@ -201,6 +214,7 @@ def cleanup_call(call_sid):
 
     # Save the history of our object to our database
     rosieCallManager.save_history(call_obj)
+
 
 
 # This is our main websocket controller. This is what we will use to collect and send both
@@ -244,6 +258,7 @@ async def toplevel(request: Request):
 
 @app.post("/api/callback")
 async def callback(request: Request):
+    global profiler
     print("Twilio Main Callback - host=" + request.client.host)
 
     # Get our key variables from the callback. basically SID, and other details about the call
@@ -266,13 +281,14 @@ async def callback(request: Request):
         inbound_call = True
 
     # Make this as the starttime for our call
-    call_obj.set_start_time(time.time())
+    call_obj.set_start_time()
 
     # Build a response back to the twilio server that explains how to handle the outbound stream
     # for this voice call
     ws_url = get_ngrok_ws_url() + '/' + call_sid
     response = VoiceResponse()
     print("Using websocket " + ws_url + " for this call.")
+    profiler.print("Websocket begin")
 
     # If we are calling out, don't provide this message as it doesn't make sense
     if inbound_call == True:
@@ -285,6 +301,7 @@ async def callback(request: Request):
         url = ws_url
     )
     response.append(connect)
+    profiler.print("Websocket connect")
     return Response(content=response.to_xml(), media_type="text/xml")
 
 
@@ -293,6 +310,7 @@ async def callback(request: Request):
 # monitoring these statuses, and using it to time the length of the call.
 @app.post("/api/callstatus")
 async def callstatus(request: Request):
+    global profiler
     print("Twilio CallStatus Callback - host=" + request.client.host)
 
     # Get our key variables from the callback. basically our call SID and status
@@ -311,8 +329,13 @@ async def callstatus(request: Request):
     if status == 'initiated':
         call_obj.set_start_time(datetime.now())
     '''
+    if status == 'in-progress':
+        profiler.update('connected')
+        profiler.print("Connected")
 
     print("Call SID:", call_sid, "has status:", status)
+    if status == 'completed':
+        rosieCallManager.remove_call(call_sid)
 
     '''
     # Taking this out for now because an inbound call does not get callstatus events. This is probably
@@ -332,22 +355,39 @@ async def callstatus(request: Request):
 # that has a TO_NUMBER and a FROM_NUMBER as its input.
 @app.post("/api/makecall")
 async def makecall(request: Request):
+    profiler.reset()
+    profiler.update("Make call")
     # Parse JSON request body for this call
     request_body = await request.json()
     
     call_obj = OutboundCall.from_string(request_body)
     callId = call_obj.make_call()
     rosieCallManager.add_call(call_obj.get_call_sid(), call_obj)
-
-    return {"message": "Making outbound call to: {call.get_to_number()} from: {call.get_from_number()}"}
+    profiler.print("Call started")
+    return {f"message": "Making outbound call to: {call.get_to_number()} from: {call.get_from_number()}"}
 
 
 # Rest API call that returns all the call results stored in our local history
+@app.get("/api/getallcalls")
+async def getallcalls(request: Request):
+    active_calls = rosieCallManager.get_active_calls()
+    for call in active_calls:
+        call['active']=True
+    history_data = rosieCallManager.get_history()
+    for call in history_data:
+        call['active']=False
+    return active_calls + history_data
+
+
 @app.get("/api/gethistory")
 async def gethistory(request: Request):
     history_data = rosieCallManager.get_history()
     return history_data
 
+@app.get("/api/getactivecalls")
+async def getactivecalls(request: Request):
+    active_calls = rosieCallManager.get_active_calls()
+    return active_calls
 
 # Rest API to retrieve an audio file for a specific call and stream it back to the client
 @app.get("/api/getaudiofile")
@@ -362,6 +402,55 @@ async def getaudiofile(request: Request):
         return Response(status_code=404, content="Audio file not found")
 
     return StreamingResponse(sound_stream, media_type="audio/wav")
+
+@app.get("/api/endcall")
+async def endcall(request: Request):
+    query_params = request.query_params
+    call_sid = query_params.get('CallSid', None)
+    if call_sid == None:
+        return Response(status_code=404, content="Invalid CallSid")
+    call_obj = rosieCallManager.get_call(call_sid)
+    liveAudioStreamManager.stop_stream(call_sid)
+    call_obj.set_call_ending(True)
+    return {f"message": "Ending call: {call_sid}"}
+
+
+@app.get("/api/stream-live-audio")
+async def stream_live_audio_endpoint(request: Request):
+    #global live_audio_streams
+    query_params = request.query_params
+    action = query_params.get('action', None)
+    call_sid = query_params.get('CallSid', None)
+    if call_sid == None:
+        return Response(status_code=404, content="Invalid CallSid")
+    if action == 'start':    
+        print(f"Starting audio stream {call_sid}")
+        return StreamingResponse(liveAudioStreamManager.play_stream(call_sid), media_type="audio/wav")
+    elif action == 'stop':
+         print(f"Stopping audio stream {call_sid}")
+         liveAudioStreamManager.stop_stream(call_sid)
+
+# For Debugging Purposes
+@app.get("/audio-microphone")
+async def audio_microphone():
+    print("Inside mic audio")
+    return StreamingResponse(liveAudioStreamManager.stream_microphone(), media_type="audio/wav")
+
+# For Debugging Purposes
+@app.get("/audio-file")
+async def audio_microphone():
+    print("Inside file audio")
+    active_calls = rosieCallManager.get_active_calls()
+    call_sid = active_calls[0]['sid']
+    return StreamingResponse(liveAudioStreamManager.play_stream(call_sid), media_type="audio/wav")
+
+# For Debugging Purposes
+@app.get("/stop-stream")
+async def audio_microphone(request: Request):
+    print("Stopping stream")
+    active_calls = rosieCallManager.get_active_calls()
+    call_sid = active_calls[0]['sid']
+    liveAudioStreamManager.stop_stream(call_sid)
 
 
 # Function to instantiate our web server
