@@ -29,7 +29,7 @@ class OutboundCall:
         self.duration = 0           # System timestamp in milliseconds
         self.TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
         self.TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
-        self.call_stream = io.BytesIO() # Does not need to be threadsafe as we only have one writer and one reader from this stream
+        self.saved_call_buffer = io.BytesIO() # Does not need to be threadsafe as we only have one writer and one reader from this stream
         self.audio_dir = "saved_audio"
 
     # Parse the json passed into this class
@@ -83,31 +83,66 @@ class OutboundCall:
         # Once we have hang up, we need to make our call has done so all resources get cleaned up properly
         self.set_call_ending(True)
 
+    def save_audio_to_call_buffer(self, raw_audio_data):
+        # Write the new chunk to the end of our internal buffer that we are keeping
+        self.saved_call_buffer.write(raw_audio_data)
+
+        # Translate this ULAW data to PCM for storage in a WAVE file
+        pcm_data = audioop.ulaw2lin(raw_audio_data, 2)
+
+        base_filename = f"{self.call_sid}.wav"
+        sound_file = os.path.join(self.audio_dir, base_filename)
+
+        if os.path.exists(sound_file):
+            # Open the existing WAVE file for reading
+            with wave.open(sound_file, 'rb') as existing_wav:
+                # Read the header and data
+                header = existing_wav.readframes(44)  # Assuming header size is 44 bytes
+                existing_sound_data = existing_wav.readframes(existing_wav.getnframes())
+
+            # Combine existing data and new data
+            combined_data = header + existing_sound_data + pcm_data
+
+            # Write the combined data back to the file
+            with wave.open(sound_file, 'wb') as modified_wav:
+                modified_wav.setparams(existing_wav.getparams())  # Set parameters from the existing file
+                modified_wav.writeframes(combined_data)
+        else:
+            # Create the file and write the new sound data
+            with wave.open(sound_file, 'wb') as new_wav:
+                # Set parameters for a new WAVE file
+                new_wav.setnchannels(1)  # Mono
+                new_wav.setsampwidth(2)  # 16-bit
+                new_wav.setframerate(8000)  # Sample rate
+                new_wav.writeframes(pcm_data)
+
     def save_audio_recording(self):
-        self.call_stream.seek(0)
+        print("No need tos audio recording as we are saving in chunks along the way")
 
         # Save the contents of the BytesIO buffer to a binary file
         # THis code is currently not being used. But this is the RAW data straight from the stream
         # It is in the format U-Law - Default Endianess, 1-channel and a 8K sample rate
         #
         # with open('output.bin', 'wb') as f:
-        #    f.write(self.call_stream.getvalue())
+        #    f.write(self.saved_call_buffer.getvalue())
 
-        self.call_stream.seek(0)
-        data = self.call_stream.getvalue()
+        # Save the contents to a WAVE file. This is the code we need because we want to be able to
+        # to playback the recording later
+        # self.saved_call_buffer.seek(0)
+        # data = self.saved_call_buffer.getvalue()
 
         # Decode the μ-law encoded data to Linear PCM - this is what is needed to save out a WAVE file
-        pcm_data = audioop.ulaw2lin(data, 2)
+        # pcm_data = audioop.ulaw2lin(data, 2)
 
-        base_filename = f"{self.call_sid}.wav"
-        sound_file = os.path.join(self.audio_dir, base_filename)
+        # base_filename = f"{self.call_sid}.wav"
+        # sound_file = os.path.join(self.audio_dir, base_filename)
 
         # Save the PCM data to a WAV file
-        with wave.open(sound_file, 'wb') as wav_file:
-            wav_file.setnchannels(1)  # Mono
-            wav_file.setsampwidth(2)   # 8-bit
-            wav_file.setframerate(8000)  # Sample rate
-            wav_file.writeframes(pcm_data)
+        # with wave.open(sound_file, 'wb') as wav_file:
+        #     wav_file.setnchannels(1)  # Mono
+        #     wav_file.setsampwidth(2)   # 8-bit
+        #     wav_file.setframerate(8000)  # Sample rate
+        #     wav_file.writeframes(pcm_data)
 
     def get_to_number(self):
         return self.to_number

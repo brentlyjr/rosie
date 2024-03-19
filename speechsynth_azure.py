@@ -19,7 +19,7 @@ class SpeechSynthAzure:
 
         self.call_sid = call_sid
 
-    def generate_speech(self, synth_text):
+    def generate_speech_raw_pcm(self, synth_text):
         # Our pull stream is where we can fetch the data as it is synthesized
         pull_stream = speechsdk.audio.PullAudioOutputStream()
 
@@ -47,11 +47,20 @@ class SpeechSynthAzure:
             total_size += filled_size
             filled_size = pull_stream.read(audio_buffer)
             print("Writing ", filled_size, " bytes to buffer of size ", total_size)
-        
-        # Encode our data to send over the web socket
-        encoded_data = base64.b64encode(big_buffer).decode('utf-8')
+
+        return big_buffer
+
+    def generate_speech(self, synth_text):
+        pcm_data = self.generate_speech_raw_pcm(synth_text)
+
+        encoded_data = base64.b64encode(pcm_data).decode('utf-8')
         return encoded_data
    
+    # Call this in our loop and if there is data to be transmitted, we will put it on the websocket, this
+    # is the code needed for streaming the incoming synthesized speech
+    def get_outbound_speech():
+        return None
+    
     def time_to_speak(self, text):
         """
         Estimates the time to speak the given text aloud.

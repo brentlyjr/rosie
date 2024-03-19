@@ -65,7 +65,7 @@ async def send_response(websocket: WebSocket, call_sid: str):
             # Send the encoded data over the WebSocket stream
             #print("Sending Media Message: ")
             await websocket.send_json(media_data(encoded_data, stream_id))
-            call_obj.call_stream.write(base64.b64decode(encoded_data))
+            call_obj.save_audio_to_call_buffer(base64.b64decode(encoded_data))
             profiler.print("Streaming AI Voice")
 
         profiler.print("ChatGPT Done")
@@ -117,8 +117,13 @@ async def on_message(websocket, message, call_sid):
     elif event == "media":
         payload = msg['media']['payload']
         call_obj = rosieCallManager.get_call(call_sid)
+
+        # If Rosie is not responding, so send all of our payload that we are
+        # receiving on the phone call to our audio buffer
         if call_obj.get_respond_time() == False:
-            call_obj.call_stream.write(base64.b64decode(payload))
+            call_obj.save_audio_to_call_buffer(base64.b64decode(payload))
+
+        # If we have some incoming data from the phone line that we need to recognize
         if payload:
             speech_recognizer = call_obj.get_recognizer()
             speech_recognizer.write_stream(payload)
