@@ -65,6 +65,11 @@ class Profiler:
         all_results = str(self)
         prefix = f"PROFILE({keyword}):".ljust(35)
         #print(f"{prefix}{all_results}")
-    
+
     def reset(self):
         self.start_times = {}
+
+# Our global profiler to give us overall timing of various components
+profiler = Profiler()
+    
+

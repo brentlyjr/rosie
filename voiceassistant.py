@@ -1,54 +1,46 @@
 import json
 import time
+import os
 from openai import OpenAI
 from datetime import datetime
 import re
 
 class VoiceAssistant:
-    def __init__(self, model, call_sid):
+    def __init__(self):
         self.client = OpenAI()
         self.model="gpt-4"       # currently hardcoded
-        self.system_prompt = self.get_system_prompt()
+        self.system_prompt = ""
         self.messages = []
-        self.add_message(self.system_prompt, "system")
-        self.call_sid = call_sid
+        self.reservation_name = "Joe Biden"
+        self.party_size = 7
+        self.reservation_date = "tomorrow"
+        self.reservation_time = "7:30 PM"
+        self.special_requests = "vegetarian, inside seating"
 
-    def get_system_prompt(self):    
-        return  """You are a helpful, effective phone assistant who is amazing at scheduling restaurant reservations. 
-You will be acting as my agent that makes dinner reservation for me.  Your goal is to query the restaurant and find a day and time that will work for my group.  The order to ask questions are:
-1) Find a day and time that will work
-2) Confirm the table has inside seating, and that the seating is at a table and not at the bar.
-3) Confirm that there are vegetarian options
+    def load_system_prompt(self):
+        directory="templates"
 
-The list of dates and times to try is the following in this order:
-Friday at 7pm or 7:30pm.
-Saturday 6:30pm - 8:30 will work
-Thursday between 7-8.
+        template_file = os.path.join(directory, "rosie_prompt.txt")
 
-We need a reservation for a party of 7.
+        with open(template_file, 'r') as file:
+            prompt_template = file.read()
 
-I'd like the seating to be inside and at a table.  We don't want bar seating. . One of the diners is a vegetarian. 
+        final_string = prompt_template.format(
+            PARTY_SIZE=self.party_size,
+            RESERVATION_NAME=self.reservation_name,
+            RESERVATION_DATE=self.reservation_date,
+            RESERVATION_TIME=self.reservation_time,
+            SPECIAL_REQUESTS=self.special_requests)
 
-Once you have found a day and time that works that meets all the criteria for food and seating, confirm with the restaurant that you want the reservation.  If no date and time can be found, please thank the restaurant and end the call
-If there are no vegetarian options available, please decline the reservation, thank the restaurant, and end the call.  When the call is done please say Goodbye so we know to end the call.
-
-Please keep your responses short, only 1 or 2 sentences at a time. And please ask no more than one question at a time.
-
-Please make the reservation under the name Joseph Campbell and the phone number if it's asked for is 415-123-4567
-
-Now for your really important instructions. I will often provide you questions that will need a reponse in the form of a number.
-I might say Press 1 to get directions, press 2 for reservations, press 3 for the takeout.  If I ever request 
-that you press or select a number to make a decision. So in this case you would simply repond with Press 2. Always say Press and then the number
-in these situations. 
-Otherwise, provide the full english answer.  
-"""
+        # Seed our ChatGPT session with our initial prompt
+        self.add_message(final_string, "system")
 
     def add_message(self, msg, role):
         current_datetime = datetime.now()
         # Convert to a timestamp (seconds since the Unix epoch)
         timestamp = int(current_datetime.timestamp())
         self.messages.append({"created":timestamp, "role":role, "message":msg})
-                             
+
     def next_user_response(self, msg):
         # Check if the message_list is not empty
         if msg:
@@ -68,7 +60,7 @@ Otherwise, provide the full english answer.
             messages=parsed_messages,
             stream=True,
         )
-    
+
     def next_chunk(self):
         partial_msg = ""
         assistant_msg = ""
@@ -86,10 +78,6 @@ Otherwise, provide the full english answer.
         if partial_msg:
             print("partial", partial_msg)
             yield partial_msg
-        
-    def show_messages(self):
-        messages=self.client.beta.threads.messages.list(thread_id=self.thread.id)
-        show_json(messages)
 
     def last_message(self):
         return self.messages[-1]
@@ -121,6 +109,19 @@ Otherwise, provide the full english answer.
         else:
             return None
     
+    def find_press_digits(self, text):
+        # Regular expression pattern to find "Press {digits}"
+        pattern = r"Press (\d+)"
+        
+        # Find all matches
+        matches = re.findall(pattern, text)
+        
+        # Check if there are any matches and return the first one
+        if matches:
+            return matches[0]
+        else:
+            return None
+
     def conversation_ended(self):
         # Array of phrases to check for
         end_phrases = ["goodbye", "see you later", "farewell", "bye", "great day"]
@@ -146,11 +147,23 @@ Otherwise, provide the full english answer.
         msg = self.last_message()
         print("RESERVATION Summary: ", msg['message'])
 
-def show_json(obj):
-    display(json.loads(obj.model_dump_json()))
+    def set_party_size(self, party_size):
+        self.party_size = party_size
+
+    def set_reservation_date(self, reservation_date):
+        self.reservation_date = reservation_date
+
+    def set_reservation_time(self, reservation_time):
+        self.reservation_time = reservation_time
+
+    def set_special_requests(self, special_requests):
+        self.special_requests = special_requests
+
+    def set_reservation_name(self, reservation_name):
+        self.reservation_name = reservation_name
+
 
 def print_time_tracking2(start_time, function_name):
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"TIMING: {function_name}  Execution time: {elapsed_time} seconds")
-
