@@ -149,8 +149,6 @@ def cleanup_call(call_sid):
     speech_recognizer = call_obj.get_recognizer()
     speech_recognizer.stop_recognition()
 
-    call_obj.get_recognizer().stop_continuous_recognition()
-    call_obj.get_synthesizer().stop_recording()
     liveAudioStreamManager.stop_stream(call_sid)
     # Logic to close out the call by setting the duration and saving the history out
     timediff = time.time() - call_obj.get_start_time()
@@ -399,7 +397,8 @@ async def endcall(request: Request):
         return Response(status_code=404, content="Invalid CallSid")
     call_obj = rosieCallManager.get_call(call_sid)
     liveAudioStreamManager.stop_stream(call_sid)
-    call_obj.set_call_ending(True)
+#    call_obj.set_call_ending(True)
+    call_obj.hang_up()
     return {f"message": "Ending call: {call_sid}"}
 
 
@@ -426,19 +425,21 @@ async def audio_microphone():
 
 # For Debugging Purposes
 @app.get("/audio-file")
-async def audio_microphone():
+async def stream_live_file():
     print("Inside file audio")
     active_calls = rosieCallManager.get_active_calls()
-    call_sid = active_calls[0]['sid']
-    return StreamingResponse(liveAudioStreamManager.play_stream(call_sid), media_type="audio/wav")
+    if active_calls[0]:
+        call_sid = active_calls[0]['sid']
+        return StreamingResponse(liveAudioStreamManager.play_stream(call_sid), media_type="audio/wav")
 
 # For Debugging Purposes
 @app.get("/stop-stream")
-async def audio_microphone(request: Request):
+async def stop_live_file(request: Request):
     print("Stopping stream")
     active_calls = rosieCallManager.get_active_calls()
-    call_sid = active_calls[0]['sid']
-    liveAudioStreamManager.stop_stream(call_sid)
+    if active_calls[0]:
+        call_sid = active_calls[0]['sid']
+        liveAudioStreamManager.stop_stream(call_sid)
 
 
 # Function to instantiate our web server

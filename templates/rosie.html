@@ -93,44 +93,52 @@
     </style>
 </head>
 <body>
-    <h2>Live Microphone Stream</h2>
-    <button id="micstartButton">Start Mic Streaming</button>
-    <audio id="audio_mic" controls></audio>
-    <script>
-        document.getElementById('micstartButton').addEventListener('click', function() {
-            const audio_mic = document.getElementById('audio_mic');
-            // Replace the URL with your FastAPI server's URL
-            const audioMicSrc = "{{ data.server_url }}/audio-microphone";
-            // Set the audio element's source to the stream URL and play
-            audio_mic.src = audioMicSrc;
-            audio_mic.play().catch(error => console.error('Error trying to play the audio stream:', error));
-        });
-    </script>
-    <h2>Live File Stream</h2>
-    <button id="filestartButton">Start File Streaming</button>
-    <audio id="audio_file" controls></audio>
-    <script>
-        document.getElementById('filestartButton').addEventListener('click', function() {
-            const audio_file = document.getElementById('audio_file');
-            // Replace the URL with your FastAPI server's URL
-            const audioFileSrc = "{{ data.server_url }}/audio-file";
-            // Set the audio element's source to the stream URL and play
-            audio_file.src = audioFileSrc;
-            audio_file.play().catch(error => console.error('Error trying to play the audio stream:', error));
-        });
-        // Add an event listener for when the audio is paused
-        document.getElementById('audio_file').addEventListener('pause', function() {
-            // Only send the stop request if the audio has actually started
-            if (this.currentTime > 0 && !this.ended) {
-                fetch('{{ data.server_url }}/stop-stream', {
-                    method: 'GET', // or 'POST', depending on your endpoint
-                })
-                .then(response => response.json())
-                .then(data => console.log(data))
-                .catch(error => console.error('Error stopping the stream:', error));
-            }
-        });
-       </script>
+
+    <div style="display: flex;">
+         <div>
+            <h2>Live File Stream</h2>
+            <button id="filestartButton">Start File Streaming</button>
+            <audio id="audio_file" controls></audio>
+            <script>
+                document.getElementById('filestartButton').addEventListener('click', function() {
+                    const audio_file = document.getElementById('audio_file');
+                    // Replace the URL with your FastAPI server's URL
+                    const audioFileSrc = "{{ data.server_url }}/audio-file";
+                    // Set the audio element's source to the stream URL and play
+                    audio_file.src = audioFileSrc;
+                    audio_file.play().catch(error => console.error('Error trying to play the audio stream:', error));
+                });
+                // Add an event listener for when the audio is paused
+                document.getElementById('audio_file').addEventListener('pause', function() {
+                    // Only send the stop request if the audio has actually started
+                    if (this.currentTime > 0 && !this.ended) {
+                        fetch('{{ data.server_url }}/stop-stream', {
+                            method: 'GET', // or 'POST', depending on your endpoint
+                        })
+                        .then(response => response.json())
+                        .then(data => console.log(data))
+                        .catch(error => console.error('Error stopping the stream:', error));
+                    }
+                });
+            </script>
+        </div>
+        <div>
+            <h2>Live Microphone Stream</h2>
+            <button id="micstartButton">Start Mic Streaming</button>
+            <audio id="audio_mic" controls></audio>
+            <script>
+                document.getElementById('micstartButton').addEventListener('click', function() {
+                    const audio_mic = document.getElementById('audio_mic');
+                    // Replace the URL with your FastAPI server's URL
+                    const audioMicSrc = "{{ data.server_url }}/audio-microphone";
+                    // Set the audio element's source to the stream URL and play
+                    audio_mic.src = audioMicSrc;
+                    audio_mic.play().catch(error => console.error('Error trying to play the audio stream:', error));
+                });
+
+            </script>
+        </div>
+    </div>
    
     <div class="container">
         <h2>Rosie Administrative Console</h2>
@@ -346,7 +354,7 @@
 
         document.getElementById("getHistoryBtn").addEventListener("click", function() {
             // Make a GET request to your server's REST API endpoint for history
-            fetch('{{ data.server_url }}/api/gethistory')
+            fetch('{{ data.server_url }}/api/getallcalls')
             .then(response => {
                 if (!response.ok) {
                     throw new Error("Network response was not ok");
