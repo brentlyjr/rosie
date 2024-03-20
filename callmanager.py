@@ -95,6 +95,7 @@ class OutboundCall:
         }
         return data 
 
+    # What is the difference between executing OutboundCall.hang_up and 
     def hang_up(self):
         call = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN).calls(self.call_sid).fetch()
         result = call.update(status='completed')

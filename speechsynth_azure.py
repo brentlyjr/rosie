@@ -79,6 +79,7 @@ class SpeechSynthAzure:
         self.stream.write(base64.b64decode(payload))
         self.audio_to_file.add_data(base64.b64decode(payload), 'right')
    
+   # I don't think this gets called anywhere.  Remove?
     def cleanup(self):
         if os.path.exists(self.synth_file_name):
             # Delete the file

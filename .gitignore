@@ -9,3 +9,4 @@ history.json
 tmp.py
 *.ipynb
 .ipynb_checkpoints
+code_suggestions.txt
