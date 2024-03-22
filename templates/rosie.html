@@ -190,6 +190,13 @@
             </select>
             <br>
 
+            <label for="callType">Call type</label>
+            <select id="callType" name="callType">
+              <option value="restaurant">Make a restaurant reservation</option>
+              <option value="doctor">Make a doctors appointment</option>
+            </select>
+            <br>
+
             <label class="label-special-textarea" for="specialRequests">Special Requests:</label><br>
             <textarea id="specialRequests" name="specialRequests" rows="1" cols="100"></textarea>
 
@@ -245,7 +252,10 @@
             var reservationDate = document.getElementById("reservationDate").value;
             var reservationTime = document.getElementById("reservationTime").value;
             var partySize = document.getElementById("partySize").value;
+            var callType = document.getElementById("callType").value;
             var specialRequests = document.getElementById("specialRequests").value;
+            var selectElement = document.getElementById('callType');
+            var goal = selectElement.options[selectElement.selectedIndex].text;
 
             // Store the text input value in a cookie
             setCookie("toNumber", toNumber, 30); // Expires in 30 days
@@ -263,6 +273,8 @@
                 RESERVATION_TIME: reservationTime,
                 RESERVATION_NAME: reservationName,
                 PARTY_SIZE: partySize,
+                CALLTYPE: callType,
+                GOAL: goal,
                 SPECIAL_REQUESTS: specialRequests
             };
 

@@ -249,10 +249,10 @@ class CallManager:
             cls._instance.audio_dir = "saved_audio"
         return cls._instance
 
-    def add_call(self, call_sid, call_obj):
+    def add_call(self, call_sid, call):
         if call_sid in self.unique_ids:
             raise ValueError(f"Call with ID {call_sid} already exists.")
-        self.objects[call_sid] = call_obj
+        self.objects[call_sid] = call
         self.unique_ids.add(call_sid)
 
     def remove_call(self, call_sid):

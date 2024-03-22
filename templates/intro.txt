@@ -1,0 +1,2 @@
+I am an AI Assistant for {FULLNAME}.  I am trying to help {FIRSTNAME} {GOAL}.  This call is being recorded.
+Are you ok with proceeding?

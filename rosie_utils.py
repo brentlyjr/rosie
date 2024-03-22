@@ -1,7 +1,9 @@
 import os
 import time
 import requests
+from configparser import ConfigParser
 
+INI_FILE_PATH = 'config.ini'
 
 def load_environment_variable(str):
     # Loads an environment variable into a physical variable and returns it
@@ -41,6 +43,24 @@ def get_ngrok_http_url():
     except requests.ConnectionError:
         print("Could not connect to ngrok API")
         return None
+
+
+def load_config(component: str) -> dict: 
+    """
+    Load configuration data from an INI file.
+
+    Parameters:
+    - ini_file_path (str): The path to the INI file.
+
+    Returns:
+    - dict: A dictionary containing the configuration data.
+    """
+    config = ConfigParser()
+    config.read(INI_FILE_PATH)
+    
+    # Assuming your INI structure, extract the 'Filepaths' section into a dictionary
+    results = {key: value for key, value in config[component].items()}
+    return results
 
 
 class Profiler:
