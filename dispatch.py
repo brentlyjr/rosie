@@ -16,10 +16,12 @@ from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from live_stream import LiveAudioStreamManager
+from speechsynth_eleven import SpeechSynthEleven
 
 # Load all the required environment variables with proper error checking
 SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
 SPEECH_REGION = load_environment_variable("AZURE_SPEECH_REGION")
+SPEECH_KEY_ELEVEN = load_environment_variable("ELEVEN_SPEECH_KEY")
 SERVICE_PORT = load_environment_variable("SERVICE_PORT")
 
 # Some critical global variables
@@ -60,12 +62,12 @@ async def send_response(websocket: WebSocket, call_sid: str):
             print("Txt to convert to speech: ", synth_text)
             digit_presses = assistant.find_press_digits(synth_text)
             if digit_presses:
-                for digit in digit_presses:
-                    encoded_data = speech_synth.play_digit(int(digit))
-                    await websocket.send_json(media_data(encoded_data, stream_id))
+                 for digit in digit_presses:
+                     encoded_data = speech_synth.play_digit(int(digit))
+                     await websocket.send_json(media_data(encoded_data, stream_id))
             else:
-                encoded_data = speech_synth.generate_speech(synth_text)
-                await websocket.send_json(media_data(encoded_data, stream_id))
+                 encoded_data = speech_synth.generate_speech(synth_text)
+                 await websocket.send_json(media_data(encoded_data, stream_id))
             call.save_audio_to_call_buffer(base64.b64decode(encoded_data))
 
         if assistant.conversation_ended():
@@ -100,7 +102,7 @@ async def on_message(websocket, message, call_sid):
 
         # Because we are starting off our streams, let's instantiate the speech_synth and
         #  the speech_recognizer for this call
-        speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
+        speech_synth = SpeechSynthEleven(SPEECH_KEY_ELEVEN, SPEECH_REGION, call_sid)
         speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
         # And store these with our call so we can retrieve them later
