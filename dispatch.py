@@ -8,8 +8,8 @@ import base64
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, get_ngrok_http_url, profiler
-from callmanager import OutboundCall, CallManager, rosieCallManager
+from rosie_utils import load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
+from callmanager import OutboundCall, rosieCallManager
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SpeechSynthAzure
 from speechrecognizer_azure import SpeechRecognizerAzure
@@ -45,25 +45,20 @@ app.add_middleware(
 
 # This function gets called when we are trying to send some media data inbound on the phone call
 async def send_response(websocket: WebSocket, call_sid: str):
-    global profiler
 
-    call_obj = rosieCallManager.get_call(call_sid)
-    assistant = call_obj.get_voice_assistant()
-    speech_synth = call_obj.get_synthesizer()
-    stream_id = call_obj.get_stream_id()
+    call = rosieCallManager.get_call(call_sid)
+    assistant = call.get_voice_assistant()
+    speech_synth = call.get_synthesizer()
+    stream_id = call.get_stream_id()
 
     print("Responding to Twilio")
-    call_obj.set_respond_time(False)
+    call.set_respond_time(False)
 
     try:
         for synth_text in assistant.next_chunk():
             # Only gets into this loop when we have another chunk of data back from ChatGPT
-            profiler.print("Chat chunk")
-            profiler.update("ChatGPT-chunk")
             print("Txt to convert to speech: ", synth_text)
-            profiler.update("SpeechSynth")
             digit_presses = assistant.find_press_digits(synth_text)
-            profiler.print("Generate speech")
             if digit_presses:
                 for digit in digit_presses:
                     encoded_data = speech_synth.play_digit(int(digit))
@@ -71,15 +66,12 @@ async def send_response(websocket: WebSocket, call_sid: str):
             else:
                 encoded_data = speech_synth.generate_speech(synth_text)
                 await websocket.send_json(media_data(encoded_data, stream_id))
-            call_obj.save_audio_to_call_buffer(base64.b64decode(encoded_data))
-            profiler.print("Streaming AI Voice")
-
-        profiler.print("ChatGPT Done")
+            call.save_audio_to_call_buffer(base64.b64decode(encoded_data))
 
         if assistant.conversation_ended():
             pause_time = speech_synth.time_to_speak(assistant.last_message_text())
             time.sleep(pause_time)
-            call_obj.hang_up()
+            call.hang_up()
             assistant.summarize_conversation()
 
     except Exception as e:
@@ -112,10 +104,10 @@ async def on_message(websocket, message, call_sid):
         speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
         # And store these with our call so we can retrieve them later
-        call_obj = rosieCallManager.get_call(call_sid)
-        call_obj.set_synthesizer(speech_synth)
-        call_obj.set_recognizer(speech_recognizer)
-        call_obj.set_stream_id(stream_id)
+        call = rosieCallManager.get_call(call_sid)
+        call.set_synthesizer(speech_synth)
+        call.set_recognizer(speech_recognizer)
+        call.set_stream_id(stream_id)
 
         # Start continuous speech recognition
         speech_recognizer.start_recognition()
@@ -123,41 +115,41 @@ async def on_message(websocket, message, call_sid):
     # The event that carries our audio stream
     elif event == "media": 
         payload = msg['media']['payload']
-        call_obj = rosieCallManager.get_call(call_sid)
+        call = rosieCallManager.get_call(call_sid)
 
         # If Rosie is not responding, so send all of our payload that we are
         # receiving on the phone call to our audio buffer
-        if call_obj.get_respond_time() == False:
-            call_obj.save_audio_to_call_buffer(base64.b64decode(payload))
+        if call.get_respond_time() == False:
+            call.save_audio_to_call_buffer(base64.b64decode(payload))
 
         # If we have some incoming data from the phone line that we need to recognize
         if payload:
-            speech_recognizer = call_obj.get_recognizer()
+            speech_recognizer = call.get_recognizer()
             speech_recognizer.write_stream(payload)
  
     elif event == "stop":
         print("Call Has Ended")
-        call_obj = rosieCallManager.get_call(call_sid)
-        call_obj.set_call_ending(True)
+        call = rosieCallManager.get_call(call_sid)
+        call.set_call_ending(True)
 
 
 # This in our main clean-up API. This will get triggered when the call automatically is hung up
 # through our twilio APIs or when the call has received a termination from the other side of the web socket
 def cleanup_call(call_sid):
     print("Cleaning up call resources")
-    call_obj = rosieCallManager.get_call(call_sid)
-    speech_recognizer = call_obj.get_recognizer()
+    call = rosieCallManager.get_call(call_sid)
+    speech_recognizer = call.get_recognizer()
     speech_recognizer.stop_recognition()
 
     liveAudioStreamManager.stop_stream(call_sid)
     # Logic to close out the call by setting the duration and saving the history out
-    timediff = time.time() - call_obj.get_start_time()
-    call_obj.set_duration(timediff)
-    print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
+    timediff = time.time() - call.get_start_time()
+    call.set_duration(timediff)
+    print("Call had duration of " + str(call.get_duration()) + " seconds.")
 
     # Save the history of our object to our database
-    rosieCallManager.save_history(call_obj)
-    call_obj.save_audio_recording()
+    rosieCallManager.save_history(call)
+    call.save_audio_recording()
 
 
 
@@ -174,12 +166,12 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             # Get our websocket message
             message = await websocket.receive_text()
             await on_message(websocket, message, call_sid)
-            call_obj = rosieCallManager.get_call(call_sid)
+            call = rosieCallManager.get_call(call_sid)
             # Detect when it is time to now respond on this websocket
-            if call_obj.get_respond_time():
+            if call.get_respond_time():
                 await send_response(websocket, call_sid)
             # Detect when our call has ended and we need to cleanup resources
-            if call_obj.get_call_ending():
+            if call.get_call_ending():
                 cleanup_call(call_sid)
                 # We have finished our call and no longer need to loop in this websocket thread
                 break
@@ -202,7 +194,6 @@ async def toplevel(request: Request):
 
 @app.post("/api/callback")
 async def callback(request: Request):
-    global profiler
     print("Twilio Main Callback - host=" + request.client.host)
 
     # Get our key variables from the callback. basically SID, and other details about the call
@@ -215,35 +206,34 @@ async def callback(request: Request):
     inbound_call = False
 
     # Lookup whether we have a call already estabished.
-    call_obj = rosieCallManager.get_call(call_sid)
+    call = rosieCallManager.get_call(call_sid)
 
     # If we don't have a call object, this means it is an incoming call to our server, so establish a new
     # call object for this session and attach to our global call manager
-    if call_obj == None:
-        call_obj = OutboundCall(to_number, from_number, call_sid)
+    if call == None:
+        call = OutboundCall(to_number, from_number, call_sid)
 
         # Setup a Rosie voice assistant for this call with LLM and call id
         assistant = VoiceAssistant()
 
         # And load the system propmt so our call will execute with all the right details
         assistant.load_system_prompt()
-        call_obj.set_voice_assistant(assistant)
+        call.set_voice_assistant(assistant)
 
         # Put this call in our active call queue for tracking
-        rosieCallManager.add_call(call_sid, call_obj)
+        rosieCallManager.add_call(call_sid, call)
 
         # Mark this as an inbound call
         inbound_call = True
 
     # Make this as the starttime for our call
-    call_obj.set_start_time()
+    call.set_start_time()
 
     # Build a response back to the twilio server that explains how to handle the outbound stream
     # for this voice call
     ws_url = get_ngrok_ws_url() + '/' + call_sid
     response = VoiceResponse()
     print("Using websocket " + ws_url + " for this call.")
-    profiler.print("Websocket begin")
 
     # If we are calling out, don't provide this message as it doesn't make sense
     if inbound_call == True:
@@ -256,7 +246,6 @@ async def callback(request: Request):
         url = ws_url
     )
     response.append(connect)
-    profiler.print("Websocket connect")
     return Response(content=response.to_xml(), media_type="text/xml")
 
 
@@ -265,7 +254,6 @@ async def callback(request: Request):
 # monitoring these statuses, and using it to time the length of the call.
 @app.post("/api/callstatus")
 async def callstatus(request: Request):
-    global profiler
     print("Twilio CallStatus Callback - host=" + request.client.host)
 
     # Get our key variables from the callback. basically our call SID and status
@@ -274,19 +262,18 @@ async def callstatus(request: Request):
     status = form.get('CallStatus', None)
 
     # Lookup our current call from the call manager and updates status
-    call_obj = rosieCallManager.get_call(call_sid)
-    call_obj.set_status(status)
+    call = rosieCallManager.get_call(call_sid)
+    call.set_status(status)
 
     '''
     # Taking this code out from here because inbound calls do not get call status events. Ideally this is
     # where the logic is to set start and end call events, but for now we will just keep them in other
     # places where we can manually detect these events.
     if status == 'initiated':
-        call_obj.set_start_time(datetime.now())
+        call.set_start_time(datetime.now())
     '''
     if status == 'in-progress':
-        profiler.update('connected')
-        profiler.print("Connected")
+        pass
 
     print("Call SID:", call_sid, "has status:", status)
     if status == 'completed':
@@ -297,12 +284,12 @@ async def callstatus(request: Request):
     # the right place to do it long term, but for now, we will move the duration calculation and the
     # history saving to when we are in 'sendresponse' and detect the end of the conversation
     if status == 'completed':
-        timediff = time.time() - call_obj.get_start_time()
-        call_obj.set_duration(timediff)
-        print("Call had duration of " + str(call_obj.get_duration()) + " seconds.")
+        timediff = time.time() - call.get_start_time()
+        call.set_duration(timediff)
+        print("Call had duration of " + str(call.get_duration()) + " seconds.")
 
         # Save the history of our object to our database
-        rosieCallManager.save_history(call_obj)
+        rosieCallManager.save_history(call)
     '''
 
 
@@ -310,43 +297,31 @@ async def callstatus(request: Request):
 # that has a TO_NUMBER and a FROM_NUMBER as its input.
 @app.post("/api/makecall")
 async def makecall(request: Request):
-    profiler.reset()
-    profiler.update("Make call")
     # Parse JSON request body for this call
     request_body = await request.json()
 
     # Extract our variables
     toNumber = request_body.get('TO_NUMBER', None)
     fromNumber = request_body.get('FROM_NUMBER', None)
-    reservationName = request_body.get('RESERVATION_NAME', None)
-    reservationDate = request_body.get('RESERVATION_DATE', None)
-    reservationTime = request_body.get('RESERVATION_TIME', None)
-    partySize = request_body.get('PARTY_SIZE', None)
-    specialRequests = request_body.get('SPECIAL_REQUESTS', None)
-    # promptMessage = request_body.get('PROMPT_MESSAGE', None)
 
     # Initiate a new call object for this call we are starting
-    call_obj = OutboundCall(toNumber, fromNumber)
+    call = OutboundCall(toNumber, fromNumber)
+
+    del request_body['TO_NUMBER']
+    del request_body['FROM_NUMBER']
+
+    #request_body['TEMPLATE'] = 'doctor'
 
     # Setup a Rosie voice assistant for this call with LLM and call id
-    assistant = VoiceAssistant()
-
-    # Set all the tokens for our call
-    assistant.set_party_size(partySize)
-    assistant.set_reservation_date(reservationDate)
-    assistant.set_reservation_time(reservationTime)
-    assistant.set_special_requests(specialRequests)
-    assistant.set_reservation_name(reservationName)
-
-    # And load the system propmt so our call will execute with all the right details and save with call
-    assistant.load_system_prompt()
-    call_obj.set_voice_assistant(assistant)
+   
+    assistant = VoiceAssistant(request_body)
+    call.set_voice_assistant(assistant)
 
     # Start the outbound call process
-    call_sid = call_obj.make_call()
+    call_sid = call.make_call()
 
     # Add this to our queue of "live" outbound calls
-    rosieCallManager.add_call(call_sid, call_obj)
+    rosieCallManager.add_call(call_sid, call)
 
     return {"message": "Making outbound call to: {toNumber} from: {fromNumber}"}
 
@@ -395,10 +370,10 @@ async def endcall(request: Request):
     call_sid = query_params.get('CallSid', None)
     if call_sid == None:
         return Response(status_code=404, content="Invalid CallSid")
-    call_obj = rosieCallManager.get_call(call_sid)
+    call = rosieCallManager.get_call(call_sid)
     liveAudioStreamManager.stop_stream(call_sid)
-#    call_obj.set_call_ending(True)
-    call_obj.hang_up()
+#    call.set_call_ending(True)
+    call.hang_up()
     return {f"message": "Ending call: {call_sid}"}
 
 
