@@ -11,17 +11,18 @@ from twilio.twiml.voice_response import VoiceResponse, Connect
 from rosie_utils import load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
 from callmanager import OutboundCall, rosieCallManager
 from voiceassistant import VoiceAssistant
-from speechsynth_azure import SpeechSynthAzure
 from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from live_stream import LiveAudioStreamManager
+from speechsynth import SpeechSynth
+from speechsynth_azure import SpeechSynthAzure
 from speechsynth_eleven import SpeechSynthEleven
+from rosie_utils import load_config
 
 # Load all the required environment variables with proper error checking
 SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
 SPEECH_REGION = load_environment_variable("AZURE_SPEECH_REGION")
-SPEECH_KEY_ELEVEN = load_environment_variable("ELEVEN_SPEECH_KEY")
 SERVICE_PORT = load_environment_variable("SERVICE_PORT")
 
 # Some critical global variables
@@ -31,6 +32,24 @@ templates = Jinja2Templates(directory="templates")
 # Instantiate our global call manager to track all concurrenet calls
 liveAudioStreamManager = LiveAudioStreamManager(rosieCallManager)
 
+
+def get_speech_synth_service(synth_type, call_sid, *args, **kwargs):
+    """
+    Generates the correct SpeechSynth subclass and returns subclass object
+        synth_type - shortened name of subclass, e.ge Azure, Eleven 
+        subclass   then generated , e.g. SpeechSynthAzure, SpeechSynthEleven
+    """
+    class_name = f'SpeechSynth{synth_type}'
+    
+    # Try to get the class from globals() where all global symbols are stored
+    # You might prefer locals() if the class is defined in a local scope
+    SynthClass = globals().get(class_name)
+
+    if SynthClass is not None and issubclass(SynthClass, SpeechSynth):
+        return SynthClass(call_sid=call_sid, *args, **kwargs)
+    else:
+        raise ValueError(f"Unsupported speech synthesis service type: {synth_type}")
+    
 
 # This CORS middleware is needed to allow cross-site domains. Without it, we are not allowed
 # to receive https calls from domains other than the ones we are running our server on
@@ -62,12 +81,12 @@ async def send_response(websocket: WebSocket, call_sid: str):
             print("Txt to convert to speech: ", synth_text)
             digit_presses = assistant.find_press_digits(synth_text)
             if digit_presses:
-                 for digit in digit_presses:
-                     encoded_data = speech_synth.play_digit(int(digit))
-                     await websocket.send_json(media_data(encoded_data, stream_id))
+                for digit in digit_presses:
+                    encoded_data = speech_synth.play_digit(int(digit))
+                    await websocket.send_json(media_data(encoded_data, stream_id))
             else:
-                 encoded_data = speech_synth.generate_speech(synth_text)
-                 await websocket.send_json(media_data(encoded_data, stream_id))
+                encoded_data = speech_synth.generate_speech(synth_text)
+                await websocket.send_json(media_data(encoded_data, stream_id))
             call.save_audio_to_call_buffer(base64.b64decode(encoded_data))
 
         if assistant.conversation_ended():
@@ -102,7 +121,10 @@ async def on_message(websocket, message, call_sid):
 
         # Because we are starting off our streams, let's instantiate the speech_synth and
         #  the speech_recognizer for this call
-        speech_synth = SpeechSynthEleven(SPEECH_KEY_ELEVEN, SPEECH_REGION, call_sid)
+
+        # get Speech Synth details from the config.ini file - provider and voice
+        synth_config = load_config('Synth')
+        speech_synth = get_speech_synth_service(synth_config['provider'], call_sid, voice=synth_config['voice'])
         speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
         # And store these with our call so we can retrieve them later
@@ -315,8 +337,8 @@ async def makecall(request: Request):
     #request_body['TEMPLATE'] = 'doctor'
 
     # Setup a Rosie voice assistant for this call with LLM and call id
-   
-    assistant = VoiceAssistant(request_body)
+    llm_config = load_config('LLM')   
+    assistant = VoiceAssistant(llm_config['model'],request_body)
     call.set_voice_assistant(assistant)
 
     # Start the outbound call process

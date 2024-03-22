@@ -1,11 +1,15 @@
-import azure.cognitiveservices.speech as speechsdk
 import base64
+import azure.cognitiveservices.speech as speechsdk
+from rosie_utils import load_environment_variable
+from speechsynth import SpeechSynth
 
+class SpeechSynthAzure(SpeechSynth):  
+    def __init__(self, call_sid, *args, **kwargs):
+        super().__init__(call_sid)
 
-class SpeechSynthAzure:
-    def __init__(self, SPEECH_KEY, SPEECH_REGION, call_sid):
+        SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
+        SPEECH_REGION = load_environment_variable("AZURE_SPEECH_REGION")
 
-        # Creeate oru speech_config for our voice synthesis
         self.speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=SPEECH_REGION)
 
         # We want the stream back in 8-bit 8000K uLaw with a single channel (mono)
@@ -17,9 +21,16 @@ class SpeechSynthAzure:
         # Let's allow swearing to come through
         self.speech_config.set_profanity(speechsdk.ProfanityOption.Raw)
 
-        self.call_sid = call_sid
+    
+    def generate_speech(self, synth_text):
+        # Implementation specific to Azure
+        pcm_data = self._generate_speech_raw_pcm(synth_text)
 
-    def generate_speech_raw_pcm(self, synth_text):
+        encoded_data = base64.b64encode(pcm_data).decode('utf-8')
+        return encoded_data
+
+
+    def _generate_speech_raw_pcm(self, synth_text):
         # Our pull stream is where we can fetch the data as it is synthesized
         pull_stream = speechsdk.audio.PullAudioOutputStream()
 
@@ -50,57 +61,5 @@ class SpeechSynthAzure:
 
         return big_buffer
 
-    def generate_speech(self, synth_text):
-        pcm_data = self.generate_speech_raw_pcm(synth_text)
-
-        encoded_data = base64.b64encode(pcm_data).decode('utf-8')
-        return encoded_data
-   
-    # Call this in our loop and if there is data to be transmitted, we will put it on the websocket, this
-    # is the code needed for streaming the incoming synthesized speech
-    def get_outbound_speech():
-        return None
-    
-
-    def play_digit(self, digit):
-        dest_filename_template = "phone_sounds/audacity-ulaw-break/digit-{digit}.raw"
-        dest_digit_file = dest_filename_template.format(digit=digit)
-
-        print(f"Playing sound for digit-{digit}")
-        with open(dest_digit_file, 'rb') as binary_file:
-            data_chunk = binary_file.read()
-            encoded_data = base64.b64encode(data_chunk).decode('utf-8')
-        return encoded_data
-
-
-    def write_stream(self, payload):
-        # Decode our payload and append to our array
-        # Write data to speech recognizer stream
-        self.stream.write(base64.b64decode(payload))
-        self.audio_to_file.add_data(base64.b64decode(payload), 'right')
-   
-   # I don't think this gets called anywhere.  Remove?
     def cleanup(self):
-        if os.path.exists(self.synth_file_name):
-            # Delete the file
-            os.remove(self.synth_file_name)
-            #print(f"File '{self.synth_file_name}' has been deleted.")
-        else:
-            print(f"The file '{self.synth_file_name}' does not exist.")   
-
-    def stop_recording(self):
-        self.audio_to_file.close()
-
-    def time_to_speak(self, text):
-        """
-        Estimates the time to speak the given text aloud.
-        
-        :param text: The text to be spoken.
-        :return: The estimated time in seconds to speak the text.
-        """
-        words_per_minute = 150
-        words = text.split()
-        number_of_words = len(words)
-        minutes = number_of_words / words_per_minute
-        seconds = minutes * 60  # Convert minutes to seconds
-        return seconds
+        pass

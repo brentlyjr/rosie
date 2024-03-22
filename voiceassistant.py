@@ -14,9 +14,9 @@ class VoiceAssistant:
      Key parameter: CALLTYPE - indicates kind of call and script (doctor appt, dinner reservation, etc) 
         CALLTYPE list in config.ini file
     """
-    def __init__(self, instruct_params: dict) -> None:
+    def __init__(self, model, instruct_params: dict) -> None:
         self.client = OpenAI()
-        self.model="gpt-4"                  # currently hardcoded
+        self.model=model                  # currently hardcoded
         self.messages = []
         self.intro_message = True           # forces an introduction message to be played first.  Set to false for no intro message.
         self.filemanager = FileManager()
