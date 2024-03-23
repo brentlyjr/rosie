@@ -35,12 +35,13 @@ def recognized_cb(evt, call_sid):
 
     # My edits - start translating as soon as there is a pause
 
-    assistant.next_user_response(txt)   
-    assistant.print_thread()
+    assistant.next_user_response(txt)
     print("-----------------------------------")
     profiler.update("ChatGPT-Full")
     profiler.update("ChatGPT-chunk")
+    # Take our text response from the end-user and put it in our voice assistant for processing
     assistant.next_assistant_response()
+    assistant.print_thread()
     profiler.print("Next_Assistant")
     print("-----------------------------------")
 
@@ -68,9 +69,10 @@ class SpeechRecognizerAzure:
         # Now instantiate our callbacks for these streams
         self.speech_recognizer.recognizing.connect(self.recognizing_callback)
         self.speech_recognizer.recognized.connect(self.recognized_callback)
-        self.speech_recognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}'.format(evt)))
-        self.speech_recognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
-        self.speech_recognizer.canceled.connect(lambda evt: print('CANCELED {}'.format(evt)))
+        # These callbacks are not needed during normal operation
+        # self.speech_recognizer.session_started.connect(lambda evt: print('SESSION STARTED: {}'.format(evt)))
+        # self.speech_recognizer.session_stopped.connect(lambda evt: print('SESSION STOPPED {}'.format(evt)))
+        # self.speech_recognizer.canceled.connect(lambda evt: print('CANCELED {}'.format(evt)))
 
     def recognizing_callback(self, evt):
         recognizing_cb(evt, self.call_sid)

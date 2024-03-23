@@ -11,7 +11,7 @@ from twilio.twiml.voice_response import VoiceResponse, Connect
 from rosie_utils import load_environment_variable, Profiler, get_ngrok_ws_url, get_ngrok_http_url, profiler
 from callmanager import OutboundCall, CallManager, rosieCallManager
 from voiceassistant import VoiceAssistant
-from speechsynth_azure import SpeechSynthAzure
+from speechsynth_azure import SynthesizerManager
 from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
@@ -39,46 +39,6 @@ app.add_middleware(
     max_age=600,  # Cache preflight response for 10 minutes
 )
 
-
-# This function gets called when we are trying to send some media data inbound on the phone call
-async def send_response(websocket: WebSocket, call_sid: str):
-    global profiler
-
-    call_obj = rosieCallManager.get_call(call_sid)
-    assistant = call_obj.get_voice_assistant()
-    speech_synth = call_obj.get_synthesizer()
-    stream_id = call_obj.get_stream_id()
-
-    print("Responding to Twilio")
-    call_obj.set_respond_time(False)
-
-    try:
-        for synth_text in assistant.next_chunk():
-            # Only gets into this loop when we have another chunk of data back from ChatGPT
-            profiler.print("Chat chunk")
-            profiler.update("ChatGPT-chunk")
-            print("Txt to convert to speech: ", synth_text)
-            profiler.update("SpeechSynth")
-            encoded_data = speech_synth.generate_speech(synth_text)
-            profiler.print("Generate speech")
-
-            # Send the encoded data over the WebSocket stream
-            #print("Sending Media Message: ")
-            await websocket.send_json(media_data(encoded_data, stream_id))
-            call_obj.save_audio_to_call_buffer(base64.b64decode(encoded_data))
-            profiler.print("Streaming AI Voice")
-
-        profiler.print("ChatGPT Done")
-
-        if assistant.conversation_ended():
-            pause_time = speech_synth.time_to_speak(assistant.last_message_text())
-            time.sleep(pause_time)
-            call_obj.hang_up()
-            assistant.summarize_conversation()
-
-    except Exception as e:
-        print(f"Error: {e}")
-
 def media_data(encoded_data, streamId):
     return {
             "event": "media",
@@ -99,14 +59,14 @@ async def on_message(websocket, message, call_sid):
         stream_id = msg.get('streamSid')
         print(f"Starting Media Stream {stream_id}")
 
-        # Because we are starting off our streams, let's instantiate the speech_synth and
+        # Because we are starting off our streams, let's instantiate the synthesizer manager and
         #  the speech_recognizer for this call
-        speech_synth = SpeechSynthAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
+        synth_mgr = SynthesizerManager(SPEECH_KEY, SPEECH_REGION, call_sid)
         speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
         # And store these with our call so we can retrieve them later
         call_obj = rosieCallManager.get_call(call_sid)
-        call_obj.set_synthesizer(speech_synth)
+        call_obj.set_synthesizer_manager(synth_mgr)
         call_obj.set_recognizer(speech_recognizer)
         call_obj.set_stream_id(stream_id)
 
@@ -118,7 +78,7 @@ async def on_message(websocket, message, call_sid):
         payload = msg['media']['payload']
         call_obj = rosieCallManager.get_call(call_sid)
 
-        # If Rosie is not responding, so send all of our payload that we are
+        # If Rosie is not talking, send all of our incoming phone messages that we are
         # receiving on the phone call to our audio buffer
         if call_obj.get_respond_time() == False:
             call_obj.save_audio_to_call_buffer(base64.b64decode(payload))
@@ -149,7 +109,8 @@ def cleanup_call(call_sid):
 
     # Save the history of our object to our database
     rosieCallManager.save_history(call_obj)
-    call_obj.save_audio_recording()
+    # We don't need to save this out as we are creating it along the way
+    # call_obj.save_audio_recording()
 
 
 # This is our main websocket controller. This is what we will use to collect and send both
@@ -159,16 +120,62 @@ def cleanup_call(call_sid):
 # can properly operate on each one independently.
 @app.websocket("/ws/{call_sid}")
 async def websocket_endpoint(websocket: WebSocket, call_sid: str):
+    # Negotiate and setup our websocket connection 
     await websocket.accept()
+
+    # We will keep the call ongoing until
+    final_conversation_segment = False
+
     try:
         while True:
-            # Get our websocket message
+            # Get our incoming websocket message and process it
             message = await websocket.receive_text()
             await on_message(websocket, message, call_sid)
+
+            # New code for processing and synthesizing text
             call_obj = rosieCallManager.get_call(call_sid)
-            # Detect when it is time to now respond on this websocket
+            synth_manager = call_obj.get_synthesizer_manager()
+
+            # Ideally we don't need this. But our stream is not initialized in here until after we start. We should just
+            # be able to check if there is a response and either skip or process
             if call_obj.get_respond_time():
-                await send_response(websocket, call_sid)
+
+                # Fetch our assistant and synthesizer manager
+                assistant = call_obj.get_voice_assistant()
+
+                # Append any new chunks of response text into our queue for synthesizing
+                for synth_text, status in assistant.next_chunk():
+
+                    # Only gets into this loop when we have another chunk of data back from ChatGPT
+                    synth_manager.synthesize_speech(synth_text, status)
+                    if status == 2:
+                        final_conversation_segment = True
+                        timer_start_time = time.time()
+                        pause_time = synth_manager.time_to_speak(assistant.last_message_text()) + 2
+                        print("End of conversation detected - starting timer for ", pause_time, " seconds to get last voice synthesis")
+
+                # I guess we are done getting data from ChatGPT here. This really should not be blocking
+                call_obj.set_respond_time(False)
+
+            # Even if we are not in respond time, we may have some data to send if our synthesis is still running
+            # But the first couple times through here, we have not initialized all our objects until we get our
+            # first 'start' media message
+            if synth_manager:
+                raw_ulaw_data, status = synth_manager.get_more_synthesized_data()
+                if raw_ulaw_data:
+                    stream_id = call_obj.get_stream_id()
+                    encoded_data = base64.b64encode(raw_ulaw_data).decode('utf-8')
+                    await websocket.send_json(media_data(encoded_data, stream_id))
+
+            # We get to this case when we have detected a "hang-up" word token in our spoken text
+            # We are not done synthesizing, so we need to wait for the remainder of the synthesis
+            # to finish
+            if final_conversation_segment == True:
+                delay = time.time() - timer_start_time
+                if delay > pause_time:
+                    assistant.summarize_conversation()
+                    call_obj.hang_up()
+
             # Detect when our call has ended and we need to cleanup resources
             if call_obj.get_call_ending():
                 cleanup_call(call_sid)
@@ -177,6 +184,8 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
 
     except WebSocketDisconnect as e:
         print(f"WebSocket disconnected: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 
 # This is a standard http GET call to the top level of our main web server. This is where we will

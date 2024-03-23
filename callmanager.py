@@ -22,6 +22,7 @@ class OutboundCall:
         self.status = None
         self.stream_id = 0
         self.voice_assistant = None
+        self.synthesizer = None
         self.time_to_respond = False
         self.start_recognition = False
         self.call_ending = False    # Once this is invoked, we know to start cleaning up all call resources
@@ -117,7 +118,7 @@ class OutboundCall:
                 new_wav.writeframes(pcm_data)
 
     def save_audio_recording(self):
-        print("No need tos audio recording as we are saving in chunks along the way")
+        print("No need to save audio recording as we are saving in chunks along the way")
 
         # Save the contents of the BytesIO buffer to a binary file
         # THis code is currently not being used. But this is the RAW data straight from the stream
@@ -162,15 +163,15 @@ class OutboundCall:
     def set_status(self, status):
         self.status = status
 
-    def get_synthesizer(self):
+    def get_synthesizer_manager(self):
         return self.synthesizer
-    
+
+    def set_synthesizer_manager(self, synth):
+        self.synthesizer = synth
+
     def get_recognizer(self):
         return self.recognizer
     
-    def set_synthesizer(self, synth):
-        self.synthesizer = synth
-
     def set_recognizer(self, recog):
         self.recognizer = recog
 
