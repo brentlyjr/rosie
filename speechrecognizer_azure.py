@@ -31,18 +31,14 @@ def recognized_cb(evt, call_sid):
         return
     
     print("RECOGNIZED: " + txt)
-    profiler.print("Recognized")
 
     # My edits - start translating as soon as there is a pause
 
     assistant.next_user_response(txt)
     print("-----------------------------------")
-    profiler.update("ChatGPT-Full")
-    profiler.update("ChatGPT-chunk")
     # Take our text response from the end-user and put it in our voice assistant for processing
     assistant.next_assistant_response()
     assistant.print_thread()
-    profiler.print("Next_Assistant")
     print("-----------------------------------")
 
     # We now tell our call object it is time to respond back to the user

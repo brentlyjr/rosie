@@ -8,7 +8,7 @@ import base64
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
+from rosie_utils import load_config, load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
 from callmanager import OutboundCall, rosieCallManager
 from voiceassistant import VoiceAssistant
 from speechsynth_azure import SynthesizerManager
@@ -16,10 +16,7 @@ from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from live_stream import LiveAudioStreamManager
-from speechsynth import SpeechSynth
-from speechsynth_azure import SpeechSynthAzure
-from speechsynth_eleven import SpeechSynthEleven
-from rosie_utils import load_config
+
 
 # Load all the required environment variables with proper error checking
 SPEECH_KEY = load_environment_variable("AZURE_SPEECH_KEY")
@@ -32,24 +29,6 @@ templates = Jinja2Templates(directory="templates")
 
 # Instantiate our global call manager to track all concurrenet calls
 liveAudioStreamManager = LiveAudioStreamManager(rosieCallManager)
-
-
-def get_speech_synth_service(synth_type, call_sid, *args, **kwargs):
-    """
-    Generates the correct SpeechSynth subclass and returns subclass object
-        synth_type - shortened name of subclass, e.ge Azure, Eleven 
-        subclass   then generated , e.g. SpeechSynthAzure, SpeechSynthEleven
-    """
-    class_name = f'SpeechSynth{synth_type}'
-    
-    # Try to get the class from globals() where all global symbols are stored
-    # You might prefer locals() if the class is defined in a local scope
-    SynthClass = globals().get(class_name)
-
-    if SynthClass is not None and issubclass(SynthClass, SpeechSynth):
-        return SynthClass(call_sid=call_sid, *args, **kwargs)
-    else:
-        raise ValueError(f"Unsupported speech synthesis service type: {synth_type}")
     
 
 # This CORS middleware is needed to allow cross-site domains. Without it, we are not allowed
@@ -73,6 +52,8 @@ def media_data(encoded_data, streamId):
             }
     }
 
+# This is our main loop when reading messages off the incoming phone stream. We read a websocket
+# message and then this is the loop that processes the message based on the type of message it is
 async def on_message(websocket, message, call_sid):
     msg = json.loads(message)
     event = msg.get("event")
@@ -89,13 +70,14 @@ async def on_message(websocket, message, call_sid):
         #  the speech_recognizer for this call
 
         # get Speech Synth details from the config.ini file - provider and voice
-        synth_config = load_config('Synth')
-        speech_synth = get_speech_synth_service(synth_config['provider'], call_sid, voice=synth_config['voice'])
+        # synth_config = load_config('Synth')
+        # speech_synth = get_speech_synth_service(synth_config['provider'], call_sid, voice=synth_config['voice'])
+        synth_manager = SynthesizerManager(SPEECH_KEY, SPEECH_REGION, call_sid)
         speech_recognizer = SpeechRecognizerAzure(SPEECH_KEY, SPEECH_REGION, call_sid)
 
         # And store these with our call so we can retrieve them later
         call = rosieCallManager.get_call(call_sid)
-        call.set_synthesizer(speech_synth)
+        call.set_synthesizer_manager(synth_manager)
         call.set_recognizer(speech_recognizer)
         call.set_stream_id(stream_id)
 
@@ -138,9 +120,9 @@ def cleanup_call(call_sid):
     print("Call had duration of " + str(call.get_duration()) + " seconds.")
 
     # Save the history of our object to our database
-    rosieCallManager.save_history(call_obj)
+    rosieCallManager.save_history(call)
     # We don't need to save this out as we are creating it along the way
-    # call_obj.save_audio_recording()
+    # call.save_audio_recording()
 
 
 # This is our main websocket controller. This is what we will use to collect and send both
@@ -163,15 +145,15 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             await on_message(websocket, message, call_sid)
 
             # New code for processing and synthesizing text
-            call_obj = rosieCallManager.get_call(call_sid)
-            synth_manager = call_obj.get_synthesizer_manager()
+            call = rosieCallManager.get_call(call_sid)
+            synth_manager = call.get_synthesizer_manager()
 
             # Ideally we don't need this. But our stream is not initialized in here until after we start. We should just
             # be able to check if there is a response and either skip or process
-            if call_obj.get_respond_time():
+            if call.get_respond_time():
 
                 # Fetch our assistant and synthesizer manager
-                assistant = call_obj.get_voice_assistant()
+                assistant = call.get_voice_assistant()
 
                 # Append any new chunks of response text into our queue for synthesizing
                 for synth_text, status in assistant.next_chunk():
@@ -181,11 +163,17 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
                     if status == 2:
                         final_conversation_segment = True
                         timer_start_time = time.time()
-                        pause_time = synth_manager.time_to_speak(assistant.last_message_text()) + 2
+                        pause_time = synth_manager.time_to_speak(assistant.last_message_text())
                         print("End of conversation detected - starting timer for ", pause_time, " seconds to get last voice synthesis")
 
+                digit_presses = assistant.find_press_digits(synth_text)
+                if digit_presses:
+                    for digit in digit_presses:
+                        encoded_data = synth_manager.play_digit(int(digit))
+                        await websocket.send_json(media_data(encoded_data, stream_id))
+
                 # I guess we are done getting data from ChatGPT here. This really should not be blocking
-                call_obj.set_respond_time(False)
+                call.set_respond_time(False)
 
             # Even if we are not in respond time, we may have some data to send if our synthesis is still running
             # But the first couple times through here, we have not initialized all our objects until we get our
@@ -193,19 +181,9 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             if synth_manager:
                 raw_ulaw_data, status = synth_manager.get_more_synthesized_data()
                 if raw_ulaw_data:
-                    stream_id = call_obj.get_stream_id()
+                    stream_id = call.get_stream_id()
                     encoded_data = base64.b64encode(raw_ulaw_data).decode('utf-8')
                     await websocket.send_json(media_data(encoded_data, stream_id))
-
-        FIX THIS
-            digit_presses = assistant.find_press_digits(synth_text)
-            if digit_presses:
-                for digit in digit_presses:
-                    encoded_data = speech_synth.play_digit(int(digit))
-                    await websocket.send_json(media_data(encoded_data, stream_id))
-            else:
-                encoded_data = speech_synth.generate_speech(synth_text)
-                await websocket.send_json(media_data(encoded_data, stream_id))
 
             # We get to this case when we have detected a "hang-up" word token in our spoken text
             # We are not done synthesizing, so we need to wait for the remainder of the synthesis
@@ -214,7 +192,7 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
                 delay = time.time() - timer_start_time
                 if delay > pause_time:
                     assistant.summarize_conversation()
-                    call_obj.hang_up()
+                    call.hang_up()
 
             # Detect when our call has ended and we need to cleanup resources
             if call.get_call_ending():
@@ -224,8 +202,6 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
 
     except WebSocketDisconnect as e:
         print(f"WebSocket disconnected: {e}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
 
 
 # This is a standard http GET call to the top level of our main web server. This is where we will

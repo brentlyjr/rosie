@@ -7,9 +7,6 @@ import threading
 import azure.cognitiveservices.speech as speechsdk
 from collections import deque
 
-class SpeechSynthAzure(SpeechSynth):  
-    def __init__(self, call_sid, *args, **kwargs):
-        super().__init__(call_sid)
 
 class SpeechSynthAzure:
 
@@ -123,6 +120,26 @@ class SynthesizerManager:
 
         # Save our id for this call
         self.call_sid = call_sid
+
+        # self.synth_config = load_config('Synth')
+        # speech_synth = self.get_speech_synth_service(self.synth_config['provider'], call_sid, voice=self.synth_config['voice'])
+
+    def get_speech_synth_service(synth_type, call_sid, *args, **kwargs):
+        """
+        Generates the correct SpeechSynth subclass and returns subclass object
+            synth_type - shortened name of subclass, e.ge Azure, Eleven 
+            subclass   then generated , e.g. SpeechSynthAzure, SpeechSynthEleven
+        """
+        class_name = f'SpeechSynth{synth_type}'
+        
+        # Try to get the class from globals() where all global symbols are stored
+        # You might prefer locals() if the class is defined in a local scope
+        SynthClass = globals().get(class_name)
+
+        if SynthClass is not None and issubclass(SynthClass, SpeechSynth):
+            return SynthClass(call_sid=call_sid, *args, **kwargs)
+        else:
+            raise ValueError(f"Unsupported speech synthesis service type: {synth_type}")
 
     # Take a new chunk of text and push this into a speech synthesizer
     def synthesize_speech(self, synth_text, status):

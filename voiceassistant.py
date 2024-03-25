@@ -23,14 +23,12 @@ class VoiceAssistant:
         self.client = OpenAI()
         self.model=model                  # currently hardcoded
         self.messages = []
-        self.intro_message = True           # forces an introduction message to be played first.  Set to false for no intro message.
+        self.intro_message = False           # forces an introduction message to be played first.  Set to false for no intro message.
         self.filemanager = FileManager()
 
         self._load_system_prompt(instruct_params)
         self.stream = None
 
-
-           
     def _load_system_prompt(self, instruct_params: dict) -> None:
         """
         Creates system prompt from files and interpolated data   
@@ -56,7 +54,6 @@ class VoiceAssistant:
         # Seed our ChatGPT session with our initial prompt
         self.add_message(final_string, "system")
         print(f"system messsage {final_string}" )
-
 
     def add_message(self, msg, role):
         current_datetime = datetime.now()
@@ -141,11 +138,11 @@ class VoiceAssistant:
 
     def last_message_text(self):
         return self.messages[-1]['message']
+
     def print_thread(self):
         for message in self.messages[1:]:   # omit the system prompt since so long
             print(f"{message['created']}: {message['role']}: {message['message']}")
 
-    
     def call_and_response(self, msg=''):
         self.next_user_response(msg)
         self.next_assistant_response()
@@ -190,7 +187,7 @@ class VoiceAssistant:
             pass
         msg = self.last_message()
         print("RESERVATION Summary: ", msg['message'])
-        
+
     def _replace_from_file(self, file_token: str):
         return replace_placeholders(self.filemanager.read_data(file_token), self.all_params)
 
