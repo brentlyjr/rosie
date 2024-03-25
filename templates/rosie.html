@@ -93,6 +93,53 @@
     </style>
 </head>
 <body>
+
+    <div style="display: flex;">
+         <div>
+            <h2>Live File Stream</h2>
+            <button id="filestartButton">Start File Streaming</button>
+            <audio id="audio_file" controls></audio>
+            <script>
+                document.getElementById('filestartButton').addEventListener('click', function() {
+                    const audio_file = document.getElementById('audio_file');
+                    // Replace the URL with your FastAPI server's URL
+                    const audioFileSrc = "{{ data.server_url }}/audio-file";
+                    // Set the audio element's source to the stream URL and play
+                    audio_file.src = audioFileSrc;
+                    audio_file.play().catch(error => console.error('Error trying to play the audio stream:', error));
+                });
+                // Add an event listener for when the audio is paused
+                document.getElementById('audio_file').addEventListener('pause', function() {
+                    // Only send the stop request if the audio has actually started
+                    if (this.currentTime > 0 && !this.ended) {
+                        fetch('{{ data.server_url }}/stop-stream', {
+                            method: 'GET', // or 'POST', depending on your endpoint
+                        })
+                        .then(response => response.json())
+                        .then(data => console.log(data))
+                        .catch(error => console.error('Error stopping the stream:', error));
+                    }
+                });
+            </script>
+        </div>
+        <div>
+            <h2>Live Microphone Stream</h2>
+            <button id="micstartButton">Start Mic Streaming</button>
+            <audio id="audio_mic" controls></audio>
+            <script>
+                document.getElementById('micstartButton').addEventListener('click', function() {
+                    const audio_mic = document.getElementById('audio_mic');
+                    // Replace the URL with your FastAPI server's URL
+                    const audioMicSrc = "{{ data.server_url }}/audio-microphone";
+                    // Set the audio element's source to the stream URL and play
+                    audio_mic.src = audioMicSrc;
+                    audio_mic.play().catch(error => console.error('Error trying to play the audio stream:', error));
+                });
+
+            </script>
+        </div>
+    </div>
+   
     <div class="container">
         <h2>Rosie Administrative Console</h2>
         <hr> <!-- Decorative horizontal line -->
@@ -143,6 +190,15 @@
             </select>
             <br>
 
+            <label for="callType">Call type</label>
+            <select id="callType" name="callType">
+              <option value="restaurant">Make a restaurant reservation</option>
+              <option value="doctor">Make a doctors appointment</option>
+              <option value="prank">Make a prank phone call</option>
+
+            </select>
+            <br>
+
             <label class="label-special-textarea" for="specialRequests">Special Requests:</label><br>
             <textarea id="specialRequests" name="specialRequests" rows="1" cols="100"></textarea>
 
@@ -151,12 +207,18 @@
             <button type="submit">Make Call</button>
         </form>
         <hr> <!-- Decorative horizontal line -->
+        <div id="serverResponse" style="color: red;">
+        Server Response
+        </div>
+        <hr> <!-- Decorative horizontal line -->
+
         <button id="getHistoryBtn">Get History</button>
         <div class="response" id="historyResponse">
             <h3>History:</h3>
             <table id="historyTable">
                 <thead>
                     <tr>
+                        <th>Actions</th>
                         <th>SID</th>
                         <th>To Number</th>
                         <th>From Number</th>
@@ -180,7 +242,7 @@
     </div>
     
     <script>
-        // Function to handle form submission
+        let isStreaming = false; // Flag to track streaming state
         document.getElementById("textInputForm").addEventListener("submit", function(event) {
             event.preventDefault(); // Prevent the default form submission
             
@@ -192,7 +254,10 @@
             var reservationDate = document.getElementById("reservationDate").value;
             var reservationTime = document.getElementById("reservationTime").value;
             var partySize = document.getElementById("partySize").value;
+            var callType = document.getElementById("callType").value;
             var specialRequests = document.getElementById("specialRequests").value;
+            var selectElement = document.getElementById('callType');
+            var goal = selectElement.options[selectElement.selectedIndex].text;
 
             // Store the text input value in a cookie
             setCookie("toNumber", toNumber, 30); // Expires in 30 days
@@ -210,6 +275,8 @@
                 RESERVATION_TIME: reservationTime,
                 RESERVATION_NAME: reservationName,
                 PARTY_SIZE: partySize,
+                CALLTYPE: callType,
+                GOAL: goal,
                 SPECIAL_REQUESTS: specialRequests
             };
 
@@ -301,7 +368,7 @@
 
         document.getElementById("getHistoryBtn").addEventListener("click", function() {
             // Make a GET request to your server's REST API endpoint for history
-            fetch('{{ data.server_url }}/api/gethistory')
+            fetch('{{ data.server_url }}/api/getallcalls')
             .then(response => {
                 if (!response.ok) {
                     throw new Error("Network response was not ok");
@@ -332,61 +399,167 @@
             }
     
             historyData.forEach(function(historyItem) {
+                console.log('Current SID:', historyItem.sid); // Log the SID being processed
+
                 var row = tableBody.insertRow();
-                var sidCell = row.insertCell(0);
-                var toNumberCell = row.insertCell(1);
-                var fromNumberCell = row.insertCell(2);
-                var startTimeCell = row.insertCell(3);
-                var durationCell = row.insertCell(4);
-                
-                // Create a hyperlink for SID
-                var sidLink = document.createElement('a');
-                sidLink.href = '#'; // Set href attribute to '#' for now
-                sidLink.innerText = historyItem.sid;
-                sidLink.onclick = function(event) {
-                    event.preventDefault(); // Prevent default action of hyperlink
-                    
-                    // Fetch audio file for the SID
-                    fetch('/api/getaudiofile?CallSid=' + historyItem.sid)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error("Network response was not ok");
-                        }
-                        return response.blob();
-                    })
-                    .then(blob => {
-                        // Remove any existing audio element from the modal
-                        var modalContent = document.querySelector('.modal-content');
-                        var existingAudio = modalContent.querySelector('audio');
-                        if (existingAudio) {
-                            modalContent.removeChild(existingAudio);
-                        }
+                var actionCell = row.insertCell(0);
+                var sidCell = row.insertCell(1);
+                var toNumberCell = row.insertCell(2);
+                var fromNumberCell = row.insertCell(3);
+                var startTimeCell = row.insertCell(4);
+                var durationCell = row.insertCell(5);
+
+
+                //if (true) {
+                if (historyItem.active != true) {
+                    // Create a hyperlink for SID
+                    var sidLink = document.createElement('a');
+                    sidLink.href = '#'; // Set href attribute to '#' for now
+                    sidLink.innerText = historyItem.sid;
+                    sidLink.onclick = function(event) {
+                        event.preventDefault(); // Prevent default action of hyperlink
                         
-                        // Create and append a new audio element for playback
-                        var audio = document.createElement('audio');
-                        audio.controls = true;
-                        audio.src = URL.createObjectURL(blob);
-                        modalContent.appendChild(audio);
-                        
-                        // Show the modal
-                        var modal = document.getElementById('audioModal');
-                        modal.style.display = 'block';
-                    })
-                    .catch(error => {
-                        console.error("Error:", error);
-                        // Display error message
-                        alert("Error fetching audio file: " + error.message);
+                        // Fetch audio file for the SID
+                        fetch('/api/getaudiofile?CallSid=' + historyItem.sid)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error("Network response was not ok");
+                            }
+                            return response.blob();
+                        })
+                        .then(blob => {
+                            // Remove any existing audio element from the modal
+                            var modalContent = document.querySelector('.modal-content');
+                            var existingAudio = modalContent.querySelector('audio');
+                            if (existingAudio) {
+                                modalContent.removeChild(existingAudio);
+                            }
+                            
+                            // Create and append a new audio element for playback
+                            var audio = document.createElement('audio');
+                            audio.controls = true;
+                            audio.src = URL.createObjectURL(blob);
+                            modalContent.appendChild(audio);
+                            
+                            // Show the modal
+                            var modal = document.getElementById('audioModal');
+                            modal.style.display = 'block';
+                        })
+                        .catch(error => {
+                            console.error("Error:", error);
+                            // Display error message
+                            alert("Error fetching audio file: " + error.message);
+                        });
+                    }
+                    sidCell.appendChild(sidLink);
+                }
+                else {
+                    var toggleButton = document.createElement('button');
+                    toggleButton.innerText = 'Start Streaming'; // Set the button text
+                    toggleButton.id = 'toggleButton'; // Set the button id (ensure it's unique if adding multiple buttons)
+
+                    var streamaudio = document.createElement('audio');
+                    streamaudio.controls = true; // Add controls so users can play/pause
+                    streamaudio.id = 'streamaudio';
+
+                    let isStreaming = false; // Initialize streaming flag
+
+ 
+                    toggleButton.addEventListener('click', () => {
+                        if (isStreaming) {
+                            // Stop Streaming
+                            stopStreaming();
+                            streamaudio.src = ""; // Stop the audio by clearing the source
+                            toggleButton.textContent = "Start Streaming"; // Update button text
+                            isStreaming = false; // Update flag
+                            stopStreaming();
+                        }
+                        else {
+                            // Start Streaming
+                            startStreaming();
+                            toggleButton.textContent = "Stop Streaming"; // Update button text
+                            isStreaming = true; // Update flag
+                        }
                     });
-                };
+
+                    function startStreaming() {
+                        console.log('Streaming SID in startStreaming:', historyItem.sid); // Confirm SID at the start of streaming
+
+                        // Directly set the audio element's src to the streaming endpoint URL
+                        streamaudio.src = '/api/stream-live-audio?action=start&CallSid=' + historyItem.sid;
+                        streamaudio.play().catch(error => {
+                            console.error('Error trying to play the audio stream:', error); // Log the error
+                            // Display the error to the user, if there's a designated place for error messages
+                            const serverResponseElement = document.getElementById("serverResponse");
+                            if (serverResponseElement) {
+                                serverResponseElement.innerText = "Error playing stream: " + error.message;
+                            }
+                        });                     
+                    }
+                    function stopStreaming() {
+                        console.log('Stop Streaming SID in stopStreaming:', historyItem.sid); // Confirm SID at the start of streaming
+
+                        // Directly set the audio element's src to the streaming endpoint URL
+                        streamaudio.src = '/api/stream-live-audio?action=stop&CallSid=' + historyItem.sid;
+                        streamaudio.play().catch(error => {
+                            console.error('Error trying to stop the audio stream:', error); // Log the error
+                            // Display the error to the user, if there's a designated place for error messages
+                            const serverResponseElement = document.getElementById("serverResponse");
+                            if (serverResponseElement) {
+                                serverResponseElement.innerText = "Error playing stream: " + error.message;
+                            }
+                        });                     
+                    }
+
+                    function handleStalledPlayback() {
+                        console.log('Playback stalled. Attempting to recover...');
+                        if (streamaudio.paused) {
+                            // If playback is already paused, just try to play again
+                            streamaudio.play().catch(error => console.error('Error trying to resume playback:', error));
+                        } else {
+                            // Pause and then play to jumpstart playback
+                            streamaudio.pause();
+                            streamaudio.play().catch(error => console.error('Error trying to resume playback:', error));
+                        }
+                    }    
+                    // Debugging: Add event listeners for the audio element
+                    streamaudio.addEventListener('play', () => console.log('Audio started playing'));
+                    streamaudio.addEventListener('pause', () => console.log('Audio paused'));
+                    streamaudio.addEventListener('error', () => console.error('Audio playback error'));
+                    streamaudio.addEventListener('ended', () => console.log('Audio playback ended'));
+                    streamaudio.addEventListener('stalled', () => { handleStalledPlayback(); });                    
+                    streamaudio.addEventListener('waiting', () => console.log('Waiting for audio data...'));
+
+
+                    var sidTextNode = document.createTextNode(historyItem.sid + ' '); // Adding a space for separation
+                    sidCell.appendChild(sidTextNode);
+
+
+                    sidCell.appendChild(toggleButton); 
+                    sidCell.appendChild(streamaudio); 
+                }
     
-                sidCell.appendChild(sidLink);
                 toNumberCell.innerText = historyItem.to_number;
                 fromNumberCell.innerText = historyItem.from_number;
                 startTimeCell.innerText = historyItem.start_time;
                 durationCell.innerText = historyItem.duration;
+
+                if (historyItem.active == true) {
+                    var hangupButton = document.createElement('button');
+                    hangupButton.innerText = 'Hangup'; // Set the button text
+                    hangupButton.onclick = function() {
+                        // Call the API with the unique ID
+                        fetch('/api/endcall?CallSid=' + historyItem.sid)
+                        .then(response => response.json())
+                        .then(data => console.log(data))
+                        .catch(error => console.error('Error:', error));
+                    };
+                    actionCell.appendChild(hangupButton);
+                }
             });
         }
     
+       
         // Close the modal when the close button is clicked
         document.getElementById('closeModalBtn').onclick = function() {
             var modal = document.getElementById('audioModal');

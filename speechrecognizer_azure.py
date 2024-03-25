@@ -8,23 +8,23 @@ def recognizing_cb(evt, call_sid):
     global profiler
     global rosieCallManager
 
-    call_obj = rosieCallManager.get_call(call_sid)
+    call = rosieCallManager.get_call(call_sid)
 
     print("LISTENING: " + evt.result.text)
-    if not call_obj.get_start_recognition():
+    if not call.get_start_recognition():
         profiler.update("Listening")
-        call_obj.set_start_recognition(True)
+        call.set_start_recognition(True)
 
 
 def recognized_cb(evt, call_sid):
     global profiler
     global rosieCallManager
 
-    call_obj = rosieCallManager.get_call(call_sid)
-    assistant = call_obj.get_voice_assistant()
+    call = rosieCallManager.get_call(call_sid)
+    assistant = call.get_voice_assistant()
 
     profiler.update("Recognized")
-    call_obj.set_start_recognition(False)
+    call.set_start_recognition(False)
     txt = evt.result.text
     if not txt:
         print("RECOGNIZED: None ---- ENDING")
@@ -46,7 +46,7 @@ def recognized_cb(evt, call_sid):
     print("-----------------------------------")
 
     # We now tell our call object it is time to respond back to the user
-    call_obj.set_respond_time(True)
+    call.set_respond_time(True)
 
 
 class SpeechRecognizerAzure:

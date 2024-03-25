@@ -7,7 +7,8 @@ from typing import List
 from datetime import datetime
 from twilio.rest import Client
 from rosie_utils import load_environment_variable, get_ngrok_http_url
-
+import copy
+import time
 
 # This class represents one call Rosie is managing. This is either an outbound call that was started from a
 # server API, or an inbound call directly to our phone number. All of the assistant and voice recognition
@@ -26,7 +27,7 @@ class OutboundCall:
         self.time_to_respond = False
         self.start_recognition = False
         self.call_ending = False    # Once this is invoked, we know to start cleaning up all call resources
-        self.start_time = datetime.now()
+        self.set_start_time()
         self.duration = 0           # System timestamp in milliseconds
         self.TWILIO_ACCOUNT_SID = load_environment_variable("TWILIO_ACCOUNT_SID")
         self.TWILIO_AUTH_TOKEN = load_environment_variable("TWILIO_AUTH_TOKEN")
@@ -49,6 +50,19 @@ class OutboundCall:
         client = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN)
 
         twilioUrl = get_ngrok_http_url()
+        # call = client.calls.create(
+        #                     method='POST',
+        #                     url=twilioUrl+'/api/callback',
+        #                     machine_detection='Enable',
+        #                     async_amd_status_callback=twilioUrl+'/api/machinedetect',
+        #                     async_amd='true',
+        #                     to=self.to_number,
+        #                     from_=self.from_number,
+        #                     status_callback=twilioUrl+'/api/callstatus',
+        #                     status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
+        #                     status_callback_method='POST'
+        #                 )
+
         call = client.calls.create(
                             method='POST',
                             url=twilioUrl+'/api/callback',
@@ -58,11 +72,15 @@ class OutboundCall:
                             status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
                             status_callback_method='POST'
                         )
-        
+      
         self.call_sid = call.sid
         print("Call SID: ",self.call_sid)
         return self.call_sid
 
+    def answer_type(self):
+        call = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN).calls(self.call_sid).fetch()
+        return call.answered_by
+    
     def get_json_str(self):
         data = self.get_history_obj()
         return json.dumps(data, indent=4)
@@ -73,10 +91,12 @@ class OutboundCall:
             "to_number": self.to_number,
             "from_number": self.from_number,
             "start_time": str(datetime.fromtimestamp(self.start_time)),
+#            "start_time": str((self.start_time)),
             "duration": self.duration
         }
         return data 
 
+    # What is the difference between executing OutboundCall.hang_up and 
     def hang_up(self):
         call = Client(self.TWILIO_ACCOUNT_SID, self.TWILIO_AUTH_TOKEN).calls(self.call_sid).fetch()
         result = call.update(status='completed')
@@ -199,8 +219,8 @@ class OutboundCall:
     def set_start_recognition(self, start_recognition: bool):
         self.start_recognition = start_recognition
 
-    def set_start_time(self, starttime):
-        self.start_time = starttime
+    def set_start_time(self):
+        self.start_time = time.time()
 
     def get_start_time(self):
         return self.start_time
@@ -230,10 +250,10 @@ class CallManager:
             cls._instance.audio_dir = "saved_audio"
         return cls._instance
 
-    def add_call(self, call_sid, call_obj):
+    def add_call(self, call_sid, call):
         if call_sid in self.unique_ids:
             raise ValueError(f"Call with ID {call_sid} already exists.")
-        self.objects[call_sid] = call_obj
+        self.objects[call_sid] = call
         self.unique_ids.add(call_sid)
 
     def remove_call(self, call_sid):
@@ -246,8 +266,16 @@ class CallManager:
         return self.objects.get(call_sid, None)
 
     def get_all_calls(self):
-        return list(self.objects.values())
-    
+        pass
+
+    def get_active_calls(self) -> List[dict]:
+        all_calls=[]
+        for call in self.objects.values():
+            history_obj = call.get_history_obj()
+            all_calls.append(history_obj)
+        return all_calls
+
+
     def save_history(self, call):
         history_obj = call.get_history_obj()
         with open(self.history_file, 'a') as file:
@@ -279,6 +307,15 @@ class CallManager:
             return None
         
         return open(sound_file, mode="rb")
+    
+    def get_live_audio_filename(self, call_sid):
+        # Returns a stream of the saved audio file for a particular call
+        # Returns null if
+        destination_dir = "saved_audio"
+        base_filename = f"{call_sid}.wav"
+        sound_file = os.path.join(destination_dir, base_filename)
+        return sound_file
+
 
 
 

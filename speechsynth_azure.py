@@ -7,6 +7,9 @@ import threading
 import azure.cognitiveservices.speech as speechsdk
 from collections import deque
 
+class SpeechSynthAzure(SpeechSynth):  
+    def __init__(self, call_sid, *args, **kwargs):
+        super().__init__(call_sid)
 
 class SpeechSynthAzure:
 

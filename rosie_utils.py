@@ -1,7 +1,9 @@
 import os
 import time
 import requests
+from configparser import ConfigParser
 
+INI_FILE_PATH = 'config.ini'
 
 def load_environment_variable(str):
     # Loads an environment variable into a physical variable and returns it
@@ -43,6 +45,24 @@ def get_ngrok_http_url():
         return None
 
 
+def load_config(component: str) -> dict: 
+    """
+    Load configuration data from an INI file.
+
+    Parameters:
+    - ini_file_path (str): The path to the INI file.
+
+    Returns:
+    - dict: A dictionary containing the configuration data.
+    """
+    config = ConfigParser()
+    config.read(INI_FILE_PATH)
+    
+    # Assuming your INI structure, extract the 'Filepaths' section into a dictionary
+    results = {key: value for key, value in config[component].items()}
+    return results
+
+
 class Profiler:
     def __init__(self):
         # Initialize a dictionary to store the start times for each keyword
@@ -66,6 +86,10 @@ class Profiler:
         prefix = f"PROFILE({keyword}):".ljust(35)
         #print(f"{prefix}{all_results}")
 
+    def reset(self):
+        self.start_times = {}
 
 # Our global profiler to give us overall timing of various components
 profiler = Profiler()
+    
+
