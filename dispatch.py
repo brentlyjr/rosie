@@ -11,7 +11,7 @@ from twilio.twiml.voice_response import VoiceResponse, Connect
 from rosie_utils import load_config, load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
 from callmanager import OutboundCall, rosieCallManager
 from voiceassistant import VoiceAssistant
-from speechsynth_azure import SynthesizerManager
+from synthesizer_manager import SynthesizerManager
 from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates

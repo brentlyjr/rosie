@@ -1,4 +1,7 @@
-# synthesizer_manager.py
+from collections import deque
+from speechsynth_azure import SpeechSynthAzure
+import azure.cognitiveservices.speech as speechsdk
+
 
 # This class is how we manage multiple chunks of text being synthesized at the same time
 class SynthesizerManager:
@@ -22,8 +25,8 @@ class SynthesizerManager:
         # Save our id for this call
         self.call_sid = call_sid
 
-        synth_config = load_config('Synth')
-        # speech_synth = get_speech_synth_service(synth_config['provider'], call_sid, voice=synth_config['voice'])
+        # self.synth_config = load_config('Synth')
+        # speech_synth = self.get_speech_synth_service(self.synth_config['provider'], call_sid, voice=self.synth_config['voice'])
 
     def get_speech_synth_service(synth_type, call_sid, *args, **kwargs):
         """
