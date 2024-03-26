@@ -1,6 +1,6 @@
 import azure.cognitiveservices.speech as speechsdk
 import base64
-from callmanager import CallManager, rosieCallManager
+from callmanager import rosieCallManager
 from rosie_utils import Profiler, profiler
 
 

@@ -9,7 +9,8 @@ from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
 from rosie_utils import load_config, load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
-from callmanager import OutboundCall, rosieCallManager
+from callmanager import rosieCallManager
+from call import Call
 from voiceassistant import VoiceAssistant
 from synthesizer_manager import SynthesizerManager
 from speechrecognizer_azure import SpeechRecognizerAzure
@@ -27,9 +28,9 @@ SERVICE_PORT = load_environment_variable("SERVICE_PORT")
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# Instantiate our global call manager to track all concurrenet calls
+# Instantiate our global stream manager
 liveAudioStreamManager = LiveAudioStreamManager(rosieCallManager)
-    
+
 
 # This CORS middleware is needed to allow cross-site domains. Without it, we are not allowed
 # to receive https calls from domains other than the ones we are running our server on
@@ -235,7 +236,7 @@ async def callback(request: Request):
     # If we don't have a call object, this means it is an incoming call to our server, so establish a new
     # call object for this session and attach to our global call manager
     if call == None:
-        call = OutboundCall(to_number, from_number, call_sid)
+        call = Call(to_number, from_number, call_sid)
 
         # Setup a Rosie voice assistant for this call with LLM and call id
         assistant = VoiceAssistant()
@@ -329,7 +330,7 @@ async def makecall(request: Request):
     fromNumber = request_body.get('FROM_NUMBER', None)
 
     # Initiate a new call object for this call we are starting
-    call = OutboundCall(toNumber, fromNumber)
+    call = Call(toNumber, fromNumber)
 
     del request_body['TO_NUMBER']
     del request_body['FROM_NUMBER']
