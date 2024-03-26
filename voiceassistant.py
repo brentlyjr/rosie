@@ -8,13 +8,16 @@ from types import SimpleNamespace
 
 class VoiceAssistant:
     """
-     instruct_params - dictionary containing custom info for caller or caller. Currently from client web app
-         E.g. first_name, phone number, specific instructions.  All customized info.
+    model - currently using OpenAI: choices are gpt-3.5-turbo, gpt-4-turbo-preview, gpt-4
 
-     Key parameter: CALLTYPE - indicates kind of call and script (doctor appt, dinner reservation, etc) 
-        CALLTYPE list in config.ini file
+    instruct_params - dictionary containing custom info for caller or caller. Currently from client web app
+         E.g. first_name, phone number, specific instructions.  All customized info.
+    
+        Key parameter: CALLTYPE - indicates kind of call and script (doctor appt, dinner reservation, etc) 
+            CALLTYPE list in config.ini file
     """
-    def __init__(self, model, instruct_params: dict) -> None:
+
+    def __init__(self, model='gpt-4-turbo-preview', instruct_params = {'CALLTYPE':'restaurant'}) -> None:
         self.client = OpenAI()
         self.model=model                  # currently hardcoded
         self.messages = []
