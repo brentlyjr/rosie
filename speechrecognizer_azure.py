@@ -37,12 +37,11 @@ def recognized_cb(evt, call_sid):
     assistant.next_user_response(txt)
     print("-----------------------------------")
     # Take our text response from the end-user and put it in our voice assistant for processing
-    assistant.next_assistant_response()
     assistant.print_thread()
     print("-----------------------------------")
 
     # We now tell our call object it is time to respond back to the user
-    call.set_respond_time(True)
+    call.need_assistant_response = True
 
 
 class SpeechRecognizerAzure:

@@ -93,10 +93,8 @@ async def on_message(websocket, message, call_sid):
         payload = msg['media']['payload']
         call = rosieCallManager.get_call(call_sid)
 
-        # If Rosie is not talking, send all of our incoming phone messages that we are
-        # receiving on the phone call to our audio buffer
-        if call.get_respond_time() == False:
-            call.audio_stream.save_inbound_audio_stream(base64.b64decode(payload))
+        # Write all incoming data to our audio buffer
+        call.audio_stream.save_inbound_audio_stream(base64.b64decode(payload))
 
         # If we have some incoming data from the phone line that we need to recognize
         if payload:
@@ -154,39 +152,32 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             # New code for processing and synthesizing text
             call = rosieCallManager.get_call(call_sid)
             synth_manager = call.get_synthesizer_manager()
+            assistant = call.get_voice_assistant()
 
-            # Ideally we don't need this. But our stream is not initialized in here until after we start. We should just
-            # be able to check if there is a response and either skip or process
-            if call.get_respond_time():
+            if call.need_assistant_response == True:
+                # TODO: throw away any queued up asssistant messages
+                # TODO: throw away any queued up synthesized messages
+                assistant.next_assistant_response()
+                call.need_assistant_response = False
 
-                # Fetch our assistant and synthesizer manager
-                assistant = call.get_voice_assistant()
-
-                # Append any new chunks of response text into our queue for synthesizing
-                for synth_text, status in assistant.next_chunk():
-
-                    digit_presses = assistant.find_press_digits(synth_text)
-                    if digit_presses:
-                        for digit in digit_presses:
-                            encoded_data = synth_manager.play_digit(int(digit))
-                            await websocket.send_json(media_data(encoded_data, stream_id))
-                    else:
-                        # Only gets into this loop when we have another chunk of data back from ChatGPT
-                        synth_manager.synthesize_speech(synth_text, status)
-                        if status == 2:
-                            final_conversation_segment = True
-                            timer_start_time = time.time()
-                            pause_time = synth_manager.time_to_speak(assistant.last_message_text())
-                            print("End of conversation detected - starting timer for ", pause_time, " seconds to get last voice synthesis")
-
-                # I guess we are done getting data from ChatGPT here. This really should not be blocking
-                call.set_respond_time(False)
+            synth_text, asst_status = assistant.next_chunk()
+            if synth_text:
+                print("SYNTH TEXT = ", synth_text)
+                digit_presses = assistant.find_press_digits(synth_text)
+                if digit_presses:
+                    for digit in digit_presses:
+                        encoded_data = synth_manager.play_digit(int(digit))
+                        await websocket.send_json(media_data(encoded_data, stream_id))
+                        # TODO: Add to call buffer
+                else:
+                    # Only gets into this loop when we have another chunk of data back from ChatGPT
+                    synth_manager.synthesize_speech(synth_text, asst_status)
 
             # Even if we are not in respond time, we may have some data to send if our synthesis is still running
             # But the first couple times through here, we have not initialized all our objects until we get our
             # first 'start' media message
             if synth_manager:
-                raw_ulaw_data, status = synth_manager.get_more_synthesized_data()
+                raw_ulaw_data, _ = synth_manager.get_more_synthesized_data()
                 if raw_ulaw_data:
                     stream_id = call.get_stream_id()
                     encoded_data = base64.b64encode(raw_ulaw_data).decode('utf-8')
@@ -197,14 +188,20 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
                     current_time_in_call = time.time() - call_start_time
                     call.audio_stream.save_outbound_audio_stream(raw_ulaw_data, current_time_in_call)
 
-            # We get to this case when we have detected a "hang-up" word token in our spoken text
-            # We are not done synthesizing, so we need to wait for the remainder of the synthesis
-            # to finish
-            if final_conversation_segment == True:
-                delay = time.time() - timer_start_time
-                if delay > pause_time:
-                    assistant.summarize_conversation()
-                    call.hang_up()
+            if asst_status == VoiceAssistant.LAST_PHRASE_IN_CONVERSATION:
+                if not final_conversation_segment:
+                    timer_start_time = time.time()
+                    pause_time = synth_manager.time_to_speak(assistant.last_message_text())
+                    final_conversation_segment = True
+                    print("End of conversation detected - starting timer for ", pause_time, " seconds to get last voice synthesis")
+                # We get to this case when we have detected a "hang-up" word token in our spoken text
+                # We are not done synthesizing, so we need to wait for the remainder of the synthesis
+                # to finish
+                else:
+                    delay = time.time() - timer_start_time
+                    if delay > pause_time:
+                        assistant.summarize_conversation()
+                        call.hang_up()
 
             # Detect when our call has ended and we need to cleanup resources
             if call.get_call_ending():

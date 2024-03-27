@@ -23,7 +23,7 @@ class Call:
         self.stream_id = 0
         self.voice_assistant = None
         self.synthesizer = None
-        self.time_to_respond = False
+        self.need_assistant_response = False
         self.start_recognition = False
         self.call_ending = False    # Once this is invoked, we know to start cleaning up all call resources
         self.set_start_time()
@@ -144,12 +144,6 @@ class Call:
     
     def set_voice_assistant(self, assistant):
         self.voice_assistant = assistant
-
-    def get_respond_time(self):
-        return self.time_to_respond
-    
-    def set_respond_time(self, time_to_respond: bool):
-        self.time_to_respond = time_to_respond
 
     def get_start_recognition(self):
         return self.start_recognition
