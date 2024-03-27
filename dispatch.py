@@ -17,6 +17,7 @@ from speechrecognizer_azure import SpeechRecognizerAzure
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from live_stream import LiveAudioStreamManager
+from audio_buffer import AudioBuffer
 
 
 # Load all the required environment variables with proper error checking
@@ -30,7 +31,6 @@ templates = Jinja2Templates(directory="templates")
 
 # Instantiate our global stream manager
 liveAudioStreamManager = LiveAudioStreamManager(rosieCallManager)
-
 
 # This CORS middleware is needed to allow cross-site domains. Without it, we are not allowed
 # to receive https calls from domains other than the ones we are running our server on
@@ -82,6 +82,9 @@ async def on_message(websocket, message, call_sid):
         call.set_recognizer(speech_recognizer)
         call.set_stream_id(stream_id)
 
+        # Create the audio stream that will manager our call buffer
+        call.audio_stream = AudioBuffer(call_sid)
+
         # Start continuous speech recognition
         speech_recognizer.start_recognition()
 
@@ -93,7 +96,7 @@ async def on_message(websocket, message, call_sid):
         # If Rosie is not talking, send all of our incoming phone messages that we are
         # receiving on the phone call to our audio buffer
         if call.get_respond_time() == False:
-            call.save_audio_to_call_buffer(base64.b64decode(payload))
+            call.audio_stream.save_inbound_audio_stream(base64.b64decode(payload))
 
         # If we have some incoming data from the phone line that we need to recognize
         if payload:
@@ -123,7 +126,7 @@ def cleanup_call(call_sid):
     # Save the history of our object to our database
     rosieCallManager.save_history(call)
     # We don't need to save this out as we are creating it along the way
-    # call.save_audio_recording()
+    call.audio_stream.save_audio_recording()
 
 
 # This is our main websocket controller. This is what we will use to collect and send both
@@ -138,6 +141,9 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
 
     # We will keep the call ongoing until
     final_conversation_segment = False
+
+    # This is our master time clock for our call so we know how long we have been talking
+    call_start_time = time.time()
 
     try:
         while True:
@@ -185,6 +191,11 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
                     stream_id = call.get_stream_id()
                     encoded_data = base64.b64encode(raw_ulaw_data).decode('utf-8')
                     await websocket.send_json(media_data(encoded_data, stream_id))
+
+                    # We also want to put this data into our call recording, we need to know
+                    # where in our overall call time we should insert this response
+                    current_time_in_call = time.time() - call_start_time
+                    call.audio_stream.save_outbound_audio_stream(raw_ulaw_data, current_time_in_call)
 
             # We get to this case when we have detected a "hang-up" word token in our spoken text
             # We are not done synthesizing, so we need to wait for the remainder of the synthesis

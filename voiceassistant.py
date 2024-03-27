@@ -23,7 +23,7 @@ class VoiceAssistant:
         self.client = OpenAI()
         self.model=model                  # currently hardcoded
         self.messages = []
-        self.intro_message = False           # forces an introduction message to be played first.  Set to false for no intro message.
+        self.intro_message = True           # forces an introduction message to be played first.  Set to false for no intro message.
         self.filemanager = FileManager()
 
         self._load_system_prompt(instruct_params)
@@ -101,14 +101,18 @@ class VoiceAssistant:
         
         # This converts the nested dictionaries into simple objects so it can be read out correctly in next_chunk
         stream = [dict_to_simplenamespace(chunk) for chunk in stream]
-        return stream
-    
+        return iter(stream)
+
     def next_chunk(self):
         partial_msg = ""
         assistant_msg = ""
 
         while True:
-            chunk = next(self.stream)
+            try:
+                chunk = next(self.stream)
+            except StopIteration:
+                break
+
             msg = chunk.choices[0].delta.content
             if msg is not None:
                 partial_msg += msg
