@@ -165,19 +165,19 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
                 # Append any new chunks of response text into our queue for synthesizing
                 for synth_text, status in assistant.next_chunk():
 
-                    # Only gets into this loop when we have another chunk of data back from ChatGPT
-                    synth_manager.synthesize_speech(synth_text, status)
-                    if status == 2:
-                        final_conversation_segment = True
-                        timer_start_time = time.time()
-                        pause_time = synth_manager.time_to_speak(assistant.last_message_text())
-                        print("End of conversation detected - starting timer for ", pause_time, " seconds to get last voice synthesis")
-
-                digit_presses = assistant.find_press_digits(synth_text)
-                if digit_presses:
-                    for digit in digit_presses:
-                        encoded_data = synth_manager.play_digit(int(digit))
-                        await websocket.send_json(media_data(encoded_data, stream_id))
+                    digit_presses = assistant.find_press_digits(synth_text)
+                    if digit_presses:
+                        for digit in digit_presses:
+                            encoded_data = synth_manager.play_digit(int(digit))
+                            await websocket.send_json(media_data(encoded_data, stream_id))
+                    else:
+                        # Only gets into this loop when we have another chunk of data back from ChatGPT
+                        synth_manager.synthesize_speech(synth_text, status)
+                        if status == 2:
+                            final_conversation_segment = True
+                            timer_start_time = time.time()
+                            pause_time = synth_manager.time_to_speak(assistant.last_message_text())
+                            print("End of conversation detected - starting timer for ", pause_time, " seconds to get last voice synthesis")
 
                 # I guess we are done getting data from ChatGPT here. This really should not be blocking
                 call.set_respond_time(False)
