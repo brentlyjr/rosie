@@ -28,6 +28,8 @@ class VoiceAssistant:
 
         self._load_system_prompt(instruct_params)
         self.stream = None
+        self.partial_msg = ""
+        self.assistant_msg = ""
 
     def _load_system_prompt(self, instruct_params: dict) -> None:
         """
@@ -104,38 +106,31 @@ class VoiceAssistant:
         return iter(stream)
 
     def next_chunk(self):
-        partial_msg = ""
-        assistant_msg = ""
+        if not self.stream:
+            return '', VoiceAssistant.PHRASE_CONTINUING
 
-        while True:
-            try:
-                chunk = next(self.stream)
-            except StopIteration:
-                break
-
-            msg = chunk.choices[0].delta.content
-            if msg is not None:
-                partial_msg += msg
-                assistant_msg += msg
-                # Check for any of the tokens that we might use to indicate a good time to pause
-                # in the speech synthesis
-                if any(char in partial_msg for char in [",", ".", "!", "?"]):
-                    return_msg = partial_msg
-                    partial_msg = ""
-                    yield return_msg, VoiceAssistant.PHRASE_CONTINUING
+        try:
+            chunk = next(self.stream)
+        except StopIteration:
+            self.partial_msg = ''
+            self.assistant_msg = ''
+            if self.conversation_ended():
+                return '', VoiceAssistant.LAST_PHRASE_IN_CONVERSATION
             else:
-                # We have finished our phrase and now can append it to our master conversation list
-                self.add_message(assistant_msg, "assistant")
-
-                # Since we have no more data to process, do a check to see if we received anything that would
-                # indicate we are at the end of the conversation
-                if self.conversation_ended():
-                    print("assistant_message: ", assistant_msg)
-                    yield '', VoiceAssistant.LAST_PHRASE_IN_CONVERSATION
-                # Otherwise, we are just at the end of our speaking time
-                else:
-                    yield '', VoiceAssistant.LAST_PHRASE_IN_RESPONSE
-                break  # Exit the loop if content is None
+                return '', VoiceAssistant.LAST_PHRASE_IN_RESPONSE
+        
+        msg = chunk.choices[0].delta.content
+        if msg is not None:
+            self.partial_msg += msg
+            self.assistant_msg += msg
+            # Check for punctuation marks indicating a good time to pause
+            if any(char in self.partial_msg for char in [",", ".", "!", "?"]):
+                self.add_message(self.partial_msg, "assistant")
+                return_msg = self.partial_msg
+                self.partial_msg = ''
+                return return_msg, VoiceAssistant.PHRASE_CONTINUING
+        
+        return '', VoiceAssistant.PHRASE_CONTINUING
 
     def last_message(self):
         return self.messages[-1]
@@ -177,7 +172,7 @@ class VoiceAssistant:
     
             # Check if the role is 'assistant' and if any of the end phrases are in the message
             if message['role'] == 'assistant' and any(phrase in message_content_lower for phrase in end_phrases):
-                print("Found an end phrase in an assistant message: ", message_content_lower)
+                # print("Found an end phrase in an assistant message: ", message_content_lower)
                 return True
     
         return False
