@@ -5,6 +5,7 @@ import re
 from typing import Dict, Tuple, Set
 from filemanager import FileManager
 from types import SimpleNamespace
+from rosie_utils import profiler
 
 class VoiceAssistant:
 
@@ -73,11 +74,12 @@ class VoiceAssistant:
             return None
 
     def next_assistant_response(self):
+        global profiler
+
         start_time = time.time()
         # Added this to force an introduction message
         if not self.intro_message:
             parsed_messages = [{"role": item["role"], "content": item["message"]} for item in self.messages]
-
             self.stream = self.client.chat.completions.create(
                 model=self.model,
                 messages=parsed_messages,
