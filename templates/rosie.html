@@ -90,6 +90,9 @@
             width: 100px; /* Fixed width for input field */
             margin-left: 10px; /* Adjust margin as needed */
         }
+        input[type="text"].timer-input {
+            width: 150px; /* Override width for timer input fields */
+        }
     </style>
 </head>
 <body>
@@ -206,6 +209,53 @@
 
             <button type="submit">Make Call</button>
         </form>
+        <hr> <!-- Decorative horizontal line -->
+        <div>
+            <!-- First text input field for user input -->
+            <label>Timer label 1</label>
+            <input type="text" id="timerLabel1" class="timer-input">
+            <!-- Button to call the API for the first input -->
+            <button onclick="callTimer('timerLabel1')">Set Timer 1</button>
+        </div>
+        
+        <div style="margin-top: 10px;">
+            <!-- Second text input field for user input -->
+            <label>Timer label 2</label>
+            <input type="text" id="timerLabel2" class="timer-input">
+            <!-- Button to call the API for the second input -->
+            <button onclick="callTimer('timerLabel2')">Set Timer 2</button>
+        </div>
+
+        <script>
+            async function callTimer(timerLabelId) {
+                // Get the value from the specified text field
+                const timerValue = document.getElementById(timerLabelId).value;
+        
+                // Construct the URL with the timerValue as a query parameter
+                const url = new URL("{{ data.server_url }}/api/timer");
+                url.searchParams.append("timerMsg", timerValue);
+        
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json', // Since we're not sending JSON in the request body
+                        }
+                    });
+        
+                    // Process your response here
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    const result = await response.json();
+                    console.log(result);
+                } catch (error) {
+                    console.error('There has been a problem with your fetch operation:', error);
+                    alert("API call failed!");
+                }
+            }
+        </script>
+
         <hr> <!-- Decorative horizontal line -->
         <div id="serverResponse" style="color: red;">
         Server Response

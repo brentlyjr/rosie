@@ -13,6 +13,7 @@ def recognizing_cb(evt, call_sid):
     print("LISTENING: " + evt.result.text)
     if not call.get_start_recognition():
         profiler.update("Listening")
+        profiler.print("Started Listening")
         call.set_start_recognition(True)
 
 
@@ -20,6 +21,7 @@ def recognized_cb(evt, call_sid):
     global profiler
     global rosieCallManager
 
+    profiler.print("Just RECOGNIZED")
     call = rosieCallManager.get_call(call_sid)
     assistant = call.get_voice_assistant()
 

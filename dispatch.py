@@ -8,7 +8,7 @@ import base64
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect
-from rosie_utils import load_config, load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url
+from rosie_utils import load_config, load_environment_variable, get_ngrok_ws_url, get_ngrok_http_url, Profiler, profiler
 from callmanager import rosieCallManager
 from call import Call
 from voiceassistant import VoiceAssistant
@@ -59,11 +59,13 @@ async def on_message(websocket, message, call_sid):
     msg = json.loads(message)
     event = msg.get("event")
     global counter
+    global profiler
 
     if event == "connected":
         print("A new stream has connected for call:", call_sid)
 
     elif event == "start":
+        profiler.update('call-start')
         stream_id = msg.get('streamSid')
         print(f"Starting Media Stream {stream_id}")
 
@@ -87,9 +89,11 @@ async def on_message(websocket, message, call_sid):
 
         # Start continuous speech recognition
         speech_recognizer.start_recognition()
+        profiler.print('Call Start TIME')
 
     # The event that carries our audio stream
     elif event == "media": 
+        #profiler.print('LISTENING for MEDIA')
         payload = msg['media']['payload']
         call = rosieCallManager.get_call(call_sid)
 
@@ -100,7 +104,8 @@ async def on_message(websocket, message, call_sid):
         if payload:
             speech_recognizer = call.get_recognizer()
             speech_recognizer.write_stream(payload)
- 
+
+
     elif event == "stop":
         print("Call Has Ended")
         call = rosieCallManager.get_call(call_sid)
@@ -134,6 +139,7 @@ def cleanup_call(call_sid):
 # can properly operate on each one independently.
 @app.websocket("/ws/{call_sid}")
 async def websocket_endpoint(websocket: WebSocket, call_sid: str):
+    global profiler
     # Negotiate and setup our websocket connection 
     await websocket.accept()
 
@@ -155,10 +161,13 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             assistant = call.get_voice_assistant()
 
             if call.need_assistant_response == True:
+                new_synth_needed_profiler = True;
+                profiler.print("need-asst-response")
                 # TODO: throw away any queued up asssistant messages
                 # TODO: throw away any queued up synthesized messages
                 assistant.next_assistant_response()
                 call.need_assistant_response = False
+
 
             synth_text, asst_status = assistant.next_chunk()
             if synth_text:
@@ -171,6 +180,9 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
                         # TODO: Add to call buffer
                 else:
                     # Only gets into this loop when we have another chunk of data back from ChatGPT
+                    if new_synth_needed_profiler:
+                        profiler.print("synth-start")
+                        new_synth_needed_profiler = False
                     synth_manager.synthesize_speech(synth_text, asst_status)
 
             # Even if we are not in respond time, we may have some data to send if our synthesis is still running
@@ -179,10 +191,11 @@ async def websocket_endpoint(websocket: WebSocket, call_sid: str):
             if synth_manager:
                 raw_ulaw_data, _ = synth_manager.get_more_synthesized_data()
                 if raw_ulaw_data:
+                    profiler.print("synth-received")
                     stream_id = call.get_stream_id()
                     encoded_data = base64.b64encode(raw_ulaw_data).decode('utf-8')
                     await websocket.send_json(media_data(encoded_data, stream_id))
-
+                    profiler.print('Streaming Synth')
                     # We also want to put this data into our call recording, we need to know
                     # where in our overall call time we should insert this response
                     current_time_in_call = time.time() - call_start_time
@@ -449,6 +462,15 @@ async def stop_live_file(request: Request):
         call_sid = active_calls[0]['sid']
         liveAudioStreamManager.stop_stream(call_sid)
 
+@app.get("/api/timer")
+async def timer(request: Request):
+    global profiler
+
+    query_params = request.query_params
+    timer_msg = query_params.get('timerMsg', None)
+
+    profiler.print(timer_msg)
+    return {"message": "Timer set for {timer_msg}"}
 
 # Function to instantiate our web server
 def run_fastapi():
